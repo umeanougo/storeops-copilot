@@ -27,7 +27,7 @@
 - [x] Security and privacy notes
 - [x] Final screenshots
 - [ ] Public deployment
-- [ ] GitHub repository
+- [x] GitHub repository
 
 ## Phase 3 — optional live Shopify connection
 
