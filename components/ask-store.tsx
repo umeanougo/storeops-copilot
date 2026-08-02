@@ -1,0 +1,61 @@
+"use client";
+
+import { FormEvent, useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { ArrowUp, Database, ExternalLink, RotateCcw, ShieldCheck, Sparkles } from "lucide-react";
+import type { AskStoreAnswer } from "@/lib/grounding/ask-store";
+
+const prompts = [
+  "Which orders have been waiting the longest?",
+  "Which products are running low?",
+  "Which products have too much inventory?",
+  "Which three issues should I address first?",
+  "Did refunds increase recently?",
+  "Which customers have the highest lifetime value?",
+];
+
+export function AskStore({ initialQuestion = "" }: { initialQuestion?: string }) {
+  const [question, setQuestion] = useState("");
+  const [asked, setAsked] = useState(initialQuestion);
+  const [answer, setAnswer] = useState<AskStoreAnswer | null>(null);
+  const [loading, setLoading] = useState(Boolean(initialQuestion));
+  const [error, setError] = useState("");
+  const input = useRef<HTMLInputElement>(null);
+
+  async function ask(value: string) {
+    if (!value.trim() || loading) return;
+    setAsked(value); setAnswer(null); setError(""); setLoading(true); setQuestion("");
+    try {
+      const response = await fetch("/api/ask", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question: value }) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Could not answer that question");
+      setAnswer(data);
+    } catch (issue) { setError(issue instanceof Error ? issue.message : "Could not answer that question"); }
+    finally { setLoading(false); }
+  }
+
+  useEffect(() => {
+    if (!initialQuestion) return;
+    let active = true;
+    fetch("/api/ask", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question: initialQuestion }) })
+      .then(async response => { const data = await response.json(); if (!response.ok) throw new Error(data.error); if (active) setAnswer(data); })
+      .catch(issue => { if (active) setError(issue instanceof Error ? issue.message : "Could not answer that question"); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [initialQuestion]);
+
+  function submit(event: FormEvent) { event.preventDefault(); void ask(question); }
+  function reset() { setAsked(""); setAnswer(null); setError(""); input.current?.focus(); }
+
+  return <section className="flex min-h-[620px] flex-col overflow-hidden rounded-[22px] border border-[#dce1da] bg-[#fffefa] panel-shadow">
+    <header className="flex items-center justify-between border-b border-[#e7eae5] px-5 py-4"><div className="flex items-center gap-3"><span className="grid h-9 w-9 place-items-center rounded-xl bg-[#e6eee8] text-[#315c49]"><Sparkles size={16}/></span><div><h2 className="text-[12px] font-bold">Ask Store</h2><p className="text-[9px] text-[#7d867f]">Closed query set · visible evidence</p></div></div>{asked&&<button onClick={reset} className="rounded-lg p-2 text-[#78817a] hover:bg-[#f1f2ef]" aria-label="Start a new question"><RotateCcw size={14}/></button>}</header>
+    <div className="flex flex-1 flex-col p-5 sm:p-7">
+      {!asked&&!loading&&<div className="my-auto"><div className="mx-auto max-w-[520px] text-center"><div className="mx-auto grid h-14 w-14 place-items-center rounded-[18px] bg-[#244f40] text-[#f4d77e]"><Sparkles size={22}/></div><h3 className="mt-5 text-[22px] font-bold tracking-[-.04em]">Ask an operational question</h3><p className="mx-auto mt-2 max-w-[430px] text-[11px] leading-5 text-[#737d75]">I’ll select only the relevant records, calculate outside the model, and link supported findings back to visible evidence.</p></div><div className="mx-auto mt-7 grid max-w-[720px] gap-2 sm:grid-cols-2">{prompts.map(prompt=><button key={prompt} onClick={()=>void ask(prompt)} className="rounded-xl border border-[#e0e4de] bg-[#faf9f6] px-4 py-3 text-left text-[10px] font-medium text-[#4f5c53] transition hover:border-[#abb9ad] hover:bg-[#f5f7f3]">{prompt}</button>)}</div></div>}
+      {asked&&<div className="ml-auto max-w-[80%] rounded-2xl rounded-br-[5px] bg-[#244f40] px-4 py-3 text-[11px] leading-5 text-white">{asked}</div>}
+      {loading&&<div className="mt-4 max-w-[90%] rounded-2xl rounded-bl-[5px] border border-[#e1e5df] p-5"><div className="flex items-center gap-2 text-[10px] text-[#667269]"><span className="h-2 w-2 animate-pulse rounded-full bg-[#c95a36]"/>Selecting relevant records…</div><div className="mt-4 space-y-2"><div className="h-2.5 w-3/4 animate-pulse rounded bg-[#ecefe9]"/><div className="h-2.5 w-full animate-pulse rounded bg-[#ecefe9]"/><div className="h-2.5 w-2/3 animate-pulse rounded bg-[#ecefe9]"/></div></div>}
+      {error&&<div className="mt-4 rounded-2xl bg-[#fff0eb] p-4 text-[10px] text-[#99452f]" role="alert">{error}</div>}
+      {answer&&<article className="mt-4 max-w-[94%] rounded-2xl rounded-bl-[5px] border border-[#dce2db] bg-[#fbfcf9] p-5 sm:p-6"><div className="flex flex-wrap items-center gap-2"><span className={`rounded-full px-2 py-1 text-[8px] font-bold uppercase tracking-[.08em] ${answer.supported?"bg-[#e7f0e8] text-[#3e684b]":"bg-[#fff0e8] text-[#99523a]"}`}>{answer.supported?"Supported by records":"Insufficient evidence"}</span><span className="text-[8px] text-[#89928b]">{answer.generatedBy==="openai"?"AI-constrained":"Deterministic response"}</span></div><h3 className="mt-4 text-[17px] font-bold tracking-[-.03em]">{answer.heading}</h3><p className="mt-2 text-[11px] leading-5 text-[#56625a]">{answer.answer}</p>{answer.evidence.length>0&&<div className="mt-5"><p className="small-caps mb-2 text-[8px] font-bold text-[#808a82]">Supporting records</p><div className="grid gap-2 sm:grid-cols-2">{answer.evidence.map(item=><Link key={`${item.recordType}-${item.recordId}`} href={item.href as never} className="group rounded-xl border border-[#e1e5df] bg-white p-3"><div className="flex items-center justify-between"><span className="text-[8px] font-bold uppercase tracking-[.08em] text-[#929a93]">{item.recordType}</span><ExternalLink size={10} className="text-[#a0a7a1] group-hover:text-[#c95a36]"/></div><p className="mt-2 text-[10px] font-bold">{item.label}</p><p className="mt-1 text-[9px] leading-4 text-[#778079]">{item.value}</p></Link>)}</div></div>}<div className="mt-4 rounded-xl bg-[#eef3e8] p-4"><p className="small-caps text-[8px] font-bold text-[#5d735f]">Recommended next step</p><p className="mt-1.5 text-[10px] leading-5 text-[#536258]">{answer.recommendation}</p></div><div className="mt-4 flex flex-wrap items-center gap-2 border-t border-[#e6e9e4] pt-3 text-[8px] text-[#7d867f]"><Database size={10}/>Based on selected store records <span>·</span><ShieldCheck size={10}/>Read-only <span>·</span>{answer.caveat}</div></article>}
+    </div>
+    <form onSubmit={submit} className="m-4 flex items-center gap-3 rounded-2xl border border-[#d5dbd4] bg-white px-4 py-3 shadow-[0_8px_25px_rgba(20,40,25,.05)] focus-within:border-[#829c89] sm:m-5"><input ref={input} value={question} onChange={event=>setQuestion(event.target.value)} placeholder="Ask about orders, inventory, customers, or refunds…" aria-label="Store question" className="min-w-0 flex-1 bg-transparent text-[11px] outline-none placeholder:text-[#9aa19b]"/><button disabled={!question.trim()||loading} aria-label="Ask question" className="grid h-8 w-8 place-items-center rounded-full bg-[#244f40] text-white disabled:cursor-not-allowed disabled:opacity-35"><ArrowUp size={15}/></button></form>
+  </section>;
+}
