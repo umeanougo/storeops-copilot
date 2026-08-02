@@ -1,73 +1,57 @@
 # Demo scripts
 
-## 30-second verbal summary
-
-StoreOps Copilot is an independently built Shopify operations portfolio prototype. It helps a merchant answer “What needs attention today?” by applying transparent rules to orders, inventory, customers, and refunds. The product shows the source data, exact threshold, and a recommended review step for every issue. OpenAI is optional and constrained to a source-derived answer allowlist; it never calculates metrics, creates alerts, or changes Shopify data. The full experience works with simulated data and no credentials.
-
 ## 90-second walkthrough
 
-**0:00–0:15 — Problem**
+**0:00–0:15 — Discovery and user**
 
-“Merchants often have plenty of data, but still have to reconcile several screens to decide what needs attention. I built StoreOps Copilot to explore whether explainable priorities can shorten that path.”
+“I observed a third-party fulfilment team repeatedly switching between merchant-owned Shopify accounts to find and process work. I independently built StoreOps Copilot to explore a unified, explainable workflow.”
 
-**0:15–0:35 — Overview**
+**0:15–0:35 — Operations overview**
 
-Open the Overview. Point to the simulated-data label and Daily Operations Brief. Explain that severity and ranking come from deterministic rules.
+Open the overview. Point to the simulated-data label, cross-merchant workload, ageing metrics, and operations brief. Explain that approximately eight accounts and 24 recurring checks describe discovery context, not prototype adoption.
 
-**0:35–0:55 — Overdue order**
+**0:35–0:58 — Unified queue**
 
-Open order #1052. Show the 76-hour age, paid status, high-value customer context, 48-hour threshold, and recommended review step.
+Open Unified Order Queue. Show the actionable-first default, merchant/store identity on every row, then filter to one merchant and sort oldest first. Point out payment, fulfilment, priority, exception, and recommended action.
 
-**0:55–1:10 — Inventory**
+**0:58–1:15 — Explainability**
 
-Open the Linen Throw alert. Show 142 units available, two 30-day sales, the exact excess rule, and the warning that seasonality and margin are missing.
+Open the highest-priority order. Show line-item inventory, service target, current exceptions, the rule-based score, why it was flagged, and the read-only recommendation.
 
-**1:10–1:25 — Ask Store**
+**1:15–1:27 — Ask StoreOps**
 
-Ask “Which three issues should I address first?” Point to linked evidence and the read-only label.
+Ask “Which merchant has the most overdue orders?” Open a cited merchant record. Explain that metrics are calculated before the model and invalid output falls back.
 
-**1:25–1:30 — Close**
+**1:27–1:30 — Close**
 
-“The key product decision was to constrain model output to source-derived claims while keeping operational facts and judgment boundaries testable.”
+“The core product judgment is one operational view without erasing merchant boundaries.”
 
 ## Three-minute walkthrough
 
-**0:00–0:25 — Problem and user**
+**0:00–0:30 — Problem**
 
-“While helping a business evaluate Shopify fulfilment operations, I observed that access to data did not make daily prioritization easy. A merchant or fulfilment lead still had to decide what mattered, why, and what to do next. I independently built this portfolio prototype to test a narrower hypothesis: transparent rules plus grounded AI can make those decisions easier to inspect.”
+“While helping a third-party fulfilment operator examine its Shopify workflows, I saw a team move store by store to confirm payment, inspect line items, identify exceptions, and remember what still needed action. The observed operation managed approximately eight accounts and performed approximately 24 recurring checks per day. I mapped that workflow and independently built this prototype; it is not their deployed product.”
 
-**0:25–0:50 — Overview and brief**
+**0:30–0:58 — Overview and brief**
 
-Open Overview. Point out the persistent “simulated demo data” label. Show the seven-day metrics and Daily Operations Brief.
+Show the simulated label, today’s workload, immediate priorities, backlogs, blocked orders, and inventory constraints. “Facts, alerts, and ordering are deterministic. OpenAI is optional and cannot change the calculations.”
 
-“The brief is not a free-form model opinion. Metrics, alerts, severity, and order are calculated before any model call. With no key, the same input produces deterministic fallback copy.”
+**0:58–1:28 — Unified queue**
 
-**0:50–1:20 — Overdue order workflow**
+Show actionable-first work across eight stores. Filter to one merchant, then a store; select paid/unfulfilled and older than 48 hours; sort oldest. “Every order keeps provider, merchant, and store context so an operator can prioritize without confusing client work.”
 
-Open the highest-priority delayed order.
+**1:28–1:55 — Merchant and order drill-down**
 
-“Order #1052 is 76 hours old and still unfulfilled. The detail view separates store facts, the deterministic rule, and the suggested action. The product explains the 48-hour threshold and the high-value customer context. It recommends checking inventory allocation and communicating; it does not edit the order.”
+Open the highest-risk merchant, compare backlog and service target, then open a delayed order. Show customer context, line items, availability, notes, partial/payment state, exceptions, priority inputs, and recommended next step. “The app does not fulfil or edit anything.”
 
-**1:20–1:50 — Inventory workflow**
+**1:55–2:25 — Grounded question**
 
-Return to Overview and open the Linen Throw inventory alert.
+Ask “Which merchant backlog increased the most?” Then ask a merchant-specific paid/unfulfilled question. Show cited merchant/store/order records. Ask an unsupported margin question and show the decline. “Retrieval is scoped before the model; output must exactly match source-derived text and identifiers.”
 
-“This variant has 142 units available and only two 30-day sales. The rule flags that combination, but the UI explicitly says this is a heuristic: it does not know margin, seasonality, or merchandising plans. The next step is a review or test—not an automatic discount.”
+**2:25–2:45 — Methodology**
 
-**1:50–2:20 — Grounded natural-language question**
+Show the three-layer architecture: normalized records, deterministic rules, constrained synthesis. Point out tenant boundaries and production requirements including OAuth, encrypted tokens, roles, isolation, and audit logs.
 
-Open Ask Store and select “Which three issues should I address first?”
+**2:45–3:00 — Validation**
 
-“The question maps to a closed query registry. The server retrieves only the top rule-based findings. The answer links to the exact alerts. If a model invents an identifier or returns invalid structured output, the app rejects it and uses the deterministic answer.”
-
-Ask an unsupported question such as “What is gross margin by channel?” and show the decline.
-
-**2:20–2:45 — Deterministic versus AI**
-
-Open Methodology.
-
-“Source records are normalized server-side. Rules calculate metrics and findings. The model can return only the exact source-derived answer object; any change falls back. The system has no SQL generation and no Shopify mutation path.”
-
-**2:45–3:00 — Trade-offs and next validation**
-
-“I deferred OAuth, multitenancy, billing, webhooks, and automation because the biggest risk is product value, not infrastructure. Next I would interview five merchants, compare time-to-priority against their current workflow, and measure usefulness, false positives, evidence trust, and unsupported-question handling.”
+“I deferred writes, billing, webhooks, and public OAuth because the next risk is workflow value. I would observe five operators performing morning triage and measure account switches, time to identify work, overdue recall, alert usefulness, false positives, and trust in cited answers.”

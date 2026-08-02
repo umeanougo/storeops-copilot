@@ -1,35 +1,28 @@
 # Screenshot plan
 
-Use a 1440 × 1000 browser viewport unless a mobile state is being captured. Keep demo mode active and show no browser extensions, secrets, or personal bookmarks.
+Use a 1440 × 1000 desktop viewport and 390 × 844 mobile viewport. Keep simulated mode visible and exclude extensions, secrets, terminals, autofill, and personal bookmarks.
 
-## Recommended portfolio set
+## Portfolio set
 
-1. **Overview dashboard** — mode label, metrics, Daily Operations Brief, and priority queue.
-2. **Daily Operations Brief** — crop the brief and ranked sequence; keep the review disclaimer visible.
-3. **Overdue order alert** — show order #1052 in the priority queue.
-4. **Issue detail** — include store data, rule, threshold, and suggested action in one frame.
-5. **Inventory risk** — show Linen Throw excess inventory and Harbour Knit low stock.
-6. **Ask Store** — “Which three issues should I address first?” with evidence links.
-7. **Case-study page** — capture the hero and product-decision sections.
-8. **Methodology** — capture the three-layer trust model and operational rulebook.
+1. **Operations overview** — workload metrics, immediate priorities, merchant backlogs, and AI-assisted brief.
+2. **Unified order queue** — multiple merchants/stores with actionable-first rows and filters visible.
+3. **Filtered merchant queue** — one merchant/store scope proving boundary-aware filtering.
+4. **Merchant backlog** — service target, average age, oldest order, trend, risk, exceptions, and queue link.
+5. **Order detail** — merchant/store, payment/fulfilment, inventory, notes, priority reasons, and next step.
+6. **Exceptions** — different operational rules with merchant/store supporting data.
+7. **Ask StoreOps cross-store answer** — “Which merchant has the most overdue orders?” with cited merchant record.
+8. **Ask StoreOps merchant answer** — one named merchant with cited same-scope orders.
+9. **Case study** — discovery context and unified-queue decision.
+10. **Methodology** — deterministic/AI boundary and tenant safeguards.
+11. **Mobile overview and queue** — responsive hierarchy and usable filters.
 
-## Capture rules
+## Integrity rules
 
-- Keep the “simulated demo data” label visible where possible.
-- Never use a live store in public screenshots.
-- Do not show `.env` files, terminals, tokens, request logs, or browser autofill.
-- Use the seeded synthetic identities only.
-- Avoid misleading crops that hide limitations or source mode.
-- Add alt text when screenshots are published.
+- Keep “simulated demo data” visible where practical.
+- Use only fictitious seeded records and anonymized customers.
+- Never capture live credentials, environment files, network logs, or customer PII.
+- Do not crop away limitations, merchant/store labels, or the read-only boundary.
+- Do not imply adoption, measured improvement, client ownership, or Shopify endorsement.
+- Add descriptive alt text when publishing assets.
 
-## Captured portfolio assets
-
-- `overview.jpg` — complete decision view at desktop width
-- `daily-brief.jpg` — overview viewport centred on the brief and priority sequence
-- `overdue-order.jpg` — order list with ageing paid orders visibly marked
-- `issue-detail.jpg` — source data, deterministic rule, and suggested review step
-- `inventory-risk.jpg` — low- and excess-inventory records in one view
-- `ask-store.jpg` — supported priority answer with linked evidence
-- `case-study.jpg` — problem framing and independent-project positioning
-- `methodology.jpg` — trust layers, rulebook, safeguards, and limitations
-- `mobile-overview.jpg` and `mobile-ask.jpg` — responsive QA captures
+Existing images are baseline artifacts and must be refreshed from the validated multi-merchant deployment before portfolio use.

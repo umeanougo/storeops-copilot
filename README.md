@@ -1,48 +1,100 @@
 # StoreOps Copilot
 
-**An independently built, AI-assisted Shopify operations portfolio prototype inspired by real workflow discovery.**
+**An independently built, AI-assisted multi-merchant fulfilment operations prototype inspired by real workflow discovery.**
 
 **Live demo:** [storeops-copilot.vercel.app](https://storeops-copilot.vercel.app)
 
-StoreOps Copilot helps a merchant or fulfilment lead answer one practical question: **What needs attention today?** It turns orders, inventory, customer, and refund records into transparent operational priorities, explains the rule behind each finding, and recommends a human-reviewed next step.
+StoreOps Copilot gives a third-party fulfilment operator one calm workspace for answering: **Across every merchant we support, what does the fulfilment team need to act on today?** It consolidates order work across merchant-owned Shopify stores while preserving the provider → merchant → store boundary on every record, alert, and recommendation.
 
-> This is a portfolio prototype, not a production Shopify app, client deliverable, or Shopify-endorsed product.
+> Portfolio prototype only. It is not a commissioned client product, production deployment, Shopify-endorsed product, or Shopify App Store listing. The public demo uses synthetic data and performs no Shopify write actions.
 
-## Why I built it
+## Discovery context and product hypothesis
 
-While helping a business evaluate its Shopify fulfilment operations, I observed how difficult it can be to identify what needs attention across orders, inventory, and customer activity. The problem was not a lack of dashboards. It was the work required to reconcile signals, judge priority, explain why an issue mattered, and decide what to do next.
+While helping a third-party fulfilment operator examine its Shopify workflows, I observed a team repeatedly switching between merchant-owned Shopify accounts to review orders, confirm payment and fulfilment readiness, inspect customer and line-item context, identify exceptions, and track unfinished work. The observed operation managed approximately eight merchant accounts and performed approximately 24 recurring account and workflow checks per day. Those figures describe discovery context—not usage of this prototype or measured impact.
 
-The product hypothesis:
+**Primary user:** a fulfilment operator or manager processing orders on behalf of multiple client merchants.
 
-> If operational store data is converted into transparent, explainable priorities, merchants can identify important issues faster than by manually reviewing multiple admin views and reports.
+**Hypothesis:** a unified, explainable operations queue can help operators identify and prioritize cross-merchant fulfilment work while maintaining the context and trust required to act safely.
 
-## Target user
+## What the MVP supports
 
-A small or mid-sized Shopify merchant, operations manager, fulfilment lead, or ecommerce operator who needs a calm daily priority view without manually reviewing several reports.
+- **Operations overview:** cross-merchant workload, ageing, payment blocks, inventory constraints, and an operations brief.
+- **Unified order queue:** actionable-first default; filter by merchant, store, payment, fulfilment, age, priority, exception, and date; sort by priority, age, merchant, or value.
+- **Merchant backlog view:** open, paid-unfulfilled, ageing, partial, blocked, average age, oldest order, trend, service target, and risk.
+- **Order detail:** merchant/store identity, customer, line items, inventory, notes, exceptions, rule-based priority, rationale, and next step.
+- **Exceptions and inventory:** supporting data, exact thresholds, and human-reviewed recommendations.
+- **Ask StoreOps:** grounded cross-store and merchant-scoped operational questions with linked records and deterministic fallback.
 
-## Key workflows
+The product model is explicit:
 
-1. **Overdue order:** identify an unfulfilled order beyond 48 hours, inspect the supporting order, see the exact rule, and review a suggested next step.
-2. **Inventory risk:** identify low or excess inventory, inspect units and sales velocity, and understand the threshold used.
-3. **Ask Store:** ask a natural-language operational question and receive a concise answer grounded in linked, visible records.
+```text
+Fulfilment provider
+└── Client merchant
+    └── Shopify store
+        ├── Orders and fulfilment tasks
+        ├── Customers (same-store identity/value only)
+        ├── Products and inventory
+        └── Operational alerts
+```
 
-The demo also includes high-value-customer risk, refund activity, daily brief generation, customer and record views, a case study, and a responsible-AI methodology page.
+## Demo data
 
-## Screenshots
+The default public experience contains one fictitious fulfilment provider, eight fictitious merchants, eight simulated Shopify stores, 56 orders, and supporting products and anonymized customers. It includes paid/unfulfilled, fulfilled, partial, payment-blocked, 24-hour and 48-hour ageing, high-value delay, increasing backlog, inventory constraints, repeat customers, and one clear/no-risk merchant. All emails use `.test`; no identity or record represents a real party.
 
-| Overview | Explainable issue |
+## Alert and priority logic
+
+Alerts are deterministic. The model does not decide whether a rule was crossed.
+
+| Signal | Prototype rule |
 |---|---|
-| ![Overview dashboard](./docs/screenshots/overview.jpg) | ![Issue detail](./docs/screenshots/issue-detail.jpg) |
+| Paid and unfulfilled | Open order with confirmed payment |
+| Age warning / overdue | Open order beyond 24h / 48h |
+| High-value delay | Open order value at least 500 in store currency |
+| High-value customer delay | Same-store customer value and delay thresholds both crossed |
+| Partial fulfilment | Shopify fulfilment state is partial |
+| Payment blocked | Open order without paid or authorized status |
+| Inventory constraint | Same-store variant availability below required quantity |
+| Increasing merchant backlog | Open orders and period-over-period increase cross configured thresholds |
 
-| Ask Store | Case study |
-|---|---|
-| ![Grounded Ask Store answer](./docs/screenshots/ask-store.jpg) | ![Product case study](./docs/screenshots/case-study.jpg) |
+The **operational priority score** combines order age, merchant service-level target, payment readiness, fulfilment state, order value, same-store customer value, merchant backlog, and inventory availability. It is rule-based prioritization—not predictive AI or autonomous decision-making. Defaults live in `lib/domain/config.ts` and require operator validation before production use.
 
-| Inventory risk | Responsible-AI methodology |
-|---|---|
-| ![Inventory risk records](./docs/screenshots/inventory-risk.jpg) | ![Responsible-AI methodology](./docs/screenshots/methodology.jpg) |
+## Grounded AI approach
 
-## Try it locally
+1. Classify the question into a closed intent registry.
+2. determine all-store, merchant, or store scope.
+3. Retrieve only records inside that scope.
+4. Calculate metrics, alerts, and priority outside the model.
+5. Build a source-derived answer and record allowlist.
+6. Send minimal structured context to the OpenAI Responses API.
+7. Require strict JSON-schema output and validate it with Zod.
+8. Reject altered text, values, ordering, links, or record identifiers.
+9. Use the deterministic answer on missing credentials or any failure.
+
+The model cannot invent stores, merge unrelated merchant data, change calculations, create alerts, execute GraphQL, or perform a write. Facts and recommendations remain visibly separate.
+
+## Architecture
+
+```mermaid
+flowchart LR
+  O["Fulfilment operator"] --> UI["Next.js operator workspace"]
+  UI --> DATA{"Server-side data mode"}
+  DATA --> DEMO["Eight-store synthetic snapshot"]
+  DATA --> SHOP["One token per Shopify store"]
+  SHOP --> GQL["Admin GraphQL API 2026-07"]
+  DEMO --> DOMAIN["Provider → merchant → store domain model"]
+  GQL --> DOMAIN
+  DOMAIN --> RULES["Deterministic metrics, alerts, priority"]
+  RULES --> FALLBACK["Deterministic brief and answers"]
+  RULES --> RETRIEVE["Scoped retrieval + record allowlist"]
+  RETRIEVE --> OPENAI["OpenAI Responses API (optional)"]
+  OPENAI --> VALIDATE["Schema + exact evidence validation"]
+  VALIDATE --> UI
+  FALLBACK --> UI
+```
+
+See [the detailed architecture](./docs/architecture.md).
+
+## Run locally
 
 ```bash
 git clone https://github.com/umeanougo/storeops-copilot.git
@@ -51,155 +103,69 @@ npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). No credentials are required. The app starts in demo mode with clearly labelled synthetic data.
+Open [http://localhost:3000](http://localhost:3000).
 
-## Demo mode
-
-Demo mode is the default even without an environment file:
+### Explicit demo mode
 
 ```bash
 cp .env.example .env.local
-# STOREOPS_DATA_MODE=demo
+# Keep STOREOPS_DATA_MODE=demo
 npm run dev
 ```
 
-The seeded dataset includes recent and older orders, several fulfilment states, an order overdue beyond 48 hours, low-stock and excess-inventory variants, a product with no 30-day sales, high-value repeat customers, refunds, and an operational anomaly. Every identity and record is synthetic.
+No credentials are required. Missing live credentials or a failed live request produces a visible demo fallback rather than a broken public experience.
 
-## Optional live Shopify setup
+## Optional live Shopify connection
 
-This portfolio path uses a custom app or development-store token instead of public OAuth.
+The prototype supports one development store through `SHOPIFY_STORE_DOMAIN` and `SHOPIFY_ADMIN_ACCESS_TOKEN`, or multiple server-side connections through `SHOPIFY_STORES_JSON`. Each configured connection includes internal merchant/store IDs, names, domain, token, API version, and connection state. Tokens never enter browser code.
 
-1. Create a custom app in a Shopify development store.
-2. Grant only the required read scopes.
-3. Install the app and copy its Admin API access token.
-4. Configure `.env.local`:
+Required read scopes are `read_orders`, `read_customers`, `read_products`, and `read_inventory`; add `read_all_orders` only when approved access beyond Shopify’s default order-history window is required. This portfolio integration uses a development/custom-app token path, not production public-app OAuth.
 
 ```bash
 STOREOPS_DATA_MODE=live
-SHOPIFY_STORE_DOMAIN=your-store.myshopify.com
-SHOPIFY_ADMIN_ACCESS_TOKEN=shpat_...
 SHOPIFY_API_VERSION=2026-07
+SHOPIFY_STORE_DOMAIN=example.myshopify.com
+SHOPIFY_ADMIN_ACCESS_TOKEN=shpat_...
 ```
 
-Required scopes:
+For multiple stores, see `.env.example`. Never commit credentials. Live multi-store behavior remains credential-dependent and has not been verified against eight real stores.
 
-- `read_orders`
-- `read_customers`
-- `read_products`
-- `read_inventory`
-- `read_locations` if location-level inventory is added
-- `read_all_orders` only if history older than 60 days is required and approved
-
-The current prototype uses `inventoryQuantity` for aggregate variant availability and does not request location records. Admin tokens remain server-side. The GraphQL client handles top-level errors, optional fields, currencies, pagination caps, and throttle metadata. If live retrieval fails, the UI visibly falls back to demo data.
-
-## Optional OpenAI setup
+## Optional OpenAI connection
 
 ```bash
 OPENAI_API_KEY=sk_...
 OPENAI_MODEL=gpt-5.6-terra
 ```
 
-The application uses the OpenAI Responses API as an optional, schema-constrained answer-selection layer. It accepts model output only when every source-derived sentence and evidence field matches the deterministic allowlist. Without a key—or after any API, schema, or validation failure—the same workflows use deterministic fallback copy.
+Without a key, the full product remains usable through deterministic briefs and answers.
 
-## Environment variables
+## Security, privacy, and tenant separation
 
-| Variable | Required | Purpose |
-|---|---:|---|
-| `STOREOPS_DATA_MODE` | No | `demo` by default; set `live` for a development store. |
-| `SHOPIFY_STORE_DOMAIN` | Live only | Development-store `.myshopify.com` domain. |
-| `SHOPIFY_ADMIN_ACCESS_TOKEN` | Live only | Server-side custom-app Admin token. |
-| `SHOPIFY_API_VERSION` | No | Defaults to pinned version `2026-07`. |
-| `OPENAI_API_KEY` | No | Enables the constrained Responses API path; deterministic fallback remains available. |
-| `OPENAI_MODEL` | No | Defaults to `gpt-5.6-terra`. |
+- Public data is simulated and clearly labelled; no client, merchant, or customer PII is committed.
+- Shopify and OpenAI credentials are server-only and ignored by Git.
+- The product is read-only: no fulfilment, inventory, order, customer, or refund mutation routes exist.
+- Retrieval and customer value are scoped by merchant and store identifiers.
+- The public demo is an internal operator view; it does not imply merchants can see one another’s data.
 
-## Architecture
+Production would require Shopify OAuth and merchant authorization, encrypted tenant-scoped token storage and rotation, role-based access, row-level tenant isolation, audit logs, retention/deletion controls, privacy agreements, protected-customer-data review, LLM governance, observability, and incident response. See [security and privacy notes](./docs/security-privacy.md).
 
-```mermaid
-flowchart LR
-  M["Merchant"] --> UI["Next.js workspace"]
-  UI --> API["Server routes"]
-  API --> DS{"Data mode"}
-  DS -->|"default"| DEMO["Synthetic demo snapshot"]
-  DS -->|"optional"| SHOP["Shopify Admin GraphQL 2026-07"]
-  DEMO --> N["Normalized domain records"]
-  SHOP --> N
-  N --> RULES["Metrics + deterministic rules + priority"]
-  RULES --> FALLBACK["Deterministic brief / answer"]
-  RULES --> SELECT["Typed intent + relevant-record selection"]
-  SELECT --> AI["OpenAI Responses API"]
-  AI --> VALIDATE["Schema + exact claim/evidence validation"]
-  VALIDATE --> UI
-  FALLBACK --> UI
-```
+## Trade-offs and limitations
 
-See [the detailed architecture](./docs/architecture.md).
+- Demo-first proves the workflow without pretending the access model is production-ready.
+- Structured retrieval is simpler and safer than a vector database for this bounded dataset.
+- A server-side connection list is sufficient for the prototype; production needs encrypted persistence and OAuth lifecycle handling.
+- Rules are inspectable but not yet calibrated with external operator testing.
+- The snapshot is read-oriented; no webhooks, background sync, carrier events, complete history, location allocation, or fulfilment writes.
+- Currency is preserved per store and not summed into a misleading cross-currency revenue metric.
+- The system does not know staffing, carrier cutoffs, margin, inbound stock, or merchant-specific exception policy.
 
-## Operational rules
+## Dogfooding and proposed success metrics
 
-| Rule | Prototype default | Determined by |
-|---|---|---|
-| Overdue order | Paid and more than 48 hours without fulfilment | Code |
-| Low inventory | Fewer than 6 available units | Code |
-| Excess inventory | 80+ units and no more than 2 units sold in 30 days | Code |
-| High-value customer risk | $1,500+ lifetime value plus an overdue order | Code |
-| Refund activity | 2+ refunds in 7 days and above the prior 7-day period | Code |
+Personal dogfooding covered all-store review, merchant/store filtering, 48-hour ageing, payment readiness, partial fulfilment, inventory blocks, no-risk merchants, scoped questions, invalid references, and deterministic fallbacks. These are personal observations, not external user feedback; see [dogfooding notes](./docs/dogfooding-notes.md).
 
-Thresholds are configurable in `lib/domain/config.ts`. They are prototype defaults, not universal merchant policy. Severity, supporting facts, and priority scores are also deterministic.
+Future validation would measure time to identify awaiting work, account switches per operator, time to review backlogs, overdue-order recall, alert usefulness and false-positive rate, time from readiness to fulfilment action, orders within service targets, operator confidence, cited-answer support, unsupported-question declines, and repeat use. All are **proposed metrics**; no measured improvement is claimed.
 
-## AI grounding approach
-
-For every question:
-
-1. Classify into a closed, typed intent registry.
-2. Select only relevant normalized records.
-3. Calculate metrics and alerts outside the model.
-4. Build an exact, source-derived claim and evidence allowlist.
-5. Require a JSON-schema response.
-6. Validate it with Zod.
-7. Reject any altered sentence, value, label, link, ordering, or record identifier.
-8. Fall back to a deterministic answer on any failure.
-
-The model cannot create an alert, assign severity, rewrite a factual claim, change a value, reorder priorities, generate SQL/GraphQL, or perform a Shopify write action. Unsupported questions receive a clear decline. This is intentionally conservative: model output is accepted only when it selects the precomputed, source-derived answer exactly.
-
-## Product decisions and trade-offs
-
-- **Demo-first:** a recruiter can use every critical workflow without configuration.
-- **Rules before AI:** trust and testability matter more than appearing autonomous.
-- **Visible evidence:** every issue separates store data, rule-based finding, and suggested action.
-- **Read-only:** the prototype recommends review steps but performs no order, inventory, customer, or refund writes.
-- **No vector database:** structured data is small enough for typed filtering and live retrieval.
-- **Bounded pagination:** appropriate for a portfolio dev store; bulk operations are a future scale path.
-- **Custom-app token:** proves the API integration without delaying the learning loop with public OAuth.
-
-## Privacy and security
-
-- No real merchant or customer data is committed.
-- Demo emails use the reserved `.test` domain.
-- Tokens are server-side and ignored by Git.
-- Logs do not include access tokens or customer payloads.
-- The app requests read scopes only and exposes no mutation route.
-- Demo/live mode is persistent and explicit.
-- Production use would require stronger data minimization, retention controls, tenant isolation, protected-customer-data review, encryption, model-vendor assessment, and audit logging.
-
-See [security and privacy notes](./docs/security-privacy.md).
-
-## Testing
-
-The test suite prioritizes business logic:
-
-- threshold boundaries and overdue-order states
-- low and excess inventory
-- high-value-customer risk
-- refund activity
-- severity and priority ordering
-- date and currency handling
-- Shopify optional-field normalization
-- grounded record selection
-- unsupported questions
-- unknown-record rejection
-- fallback brief stability
-- demo mode without credentials
-- empty data and no-alert behavior
+## Quality checks
 
 ```bash
 npm test
@@ -208,60 +174,27 @@ npm run typecheck
 npm run build
 ```
 
-## Deployment
+## Roadmap if the hypothesis earns investment
 
-The public demo is deployed at [storeops-copilot.vercel.app](https://storeops-copilot.vercel.app). It requires no environment variables and runs only against the labelled synthetic dataset.
+1. Observe five fulfilment operators completing a real morning triage and compare the queue with their source-of-truth review.
+2. Calibrate per-merchant service levels, alert usefulness, false positives, and exception policy.
+3. Add OAuth, encrypted token lifecycle, tenant isolation, roles, and audit logging.
+4. Add webhook-driven incremental sync, coverage diagnostics, bulk history, location-aware inventory, and carrier events.
+5. Evaluate safe, confirmed handoffs into Shopify Admin before considering any write action.
 
-To create another Vercel deployment:
+## Shopify application context
 
-```bash
-npx vercel
-```
-
-Keep `STOREOPS_DATA_MODE=demo` in a public deployment unless live credentials are securely configured. Never add Shopify or OpenAI secrets to browser-visible variables.
-
-## Known limitations
-
-- This is not production-ready and has not been validated with external merchants.
-- Prototype rules do not know margin, seasonality, inbound stock, carrier events, or product strategy.
-- Live retrieval is capped and nested records may be truncated.
-- Refund comparison uses a simple recent-versus-prior window, not statistical anomaly detection.
-- Sales velocity is derived from the loaded order window.
-- The prototype does not forecast stockouts or explain causal change.
-- No public OAuth, multitenancy, webhooks, billing, background sync, or write actions.
-
-## Roadmap, if the hypothesis earns investment
-
-1. Five merchant discovery interviews and task-based usability testing.
-2. Merchant-configured thresholds and explicit alert feedback.
-3. Factuality and unsupported-question eval suite.
-4. OAuth onboarding and stronger protected-data controls.
-5. Incremental sync, coverage diagnostics, and bulk-history retrieval.
-6. Safe handoff into Shopify admin—still requiring merchant confirmation.
-
-## What I learned
-
-The strongest AI product decision was to give the model less authority. Keeping facts, alert state, severity, priority, and record selection deterministic made the experience easier to inspect, test, and explain. AI is most useful here as a constrained communication layer, not an operational source of truth.
-
-## Application context
-
-I built this project for an active Shopify Product Manager application to demonstrate merchant empathy, narrow MVP definition, writing and evaluating code, API fluency, rapid prototyping, independent ownership, responsible AI judgment, dogfooding, and clear trade-off decisions. AI tools increased iteration speed; I retained responsibility for product scope, rules, technical validation, and quality.
+I built this project for an active Shopify Product Manager application to demonstrate direct workflow discovery, merchant/operator empathy, Shopify data-model and API fluency, narrow MVP judgment, AI-assisted implementation, dogfooding, testing, and the ability to move independently from an ambiguous problem to working software. AI coding tools accelerated framing, implementation, debugging, testing, and documentation; I retained responsibility for product scope, rules, safeguards, technical validation, and quality.
 
 ## Portfolio artifacts
 
-- [Product case study](./app/case-study/page.tsx)
-- [Responsible-AI methodology](./app/methodology/page.tsx)
+- [Case study](./app/case-study/page.tsx)
+- [Methodology](./app/methodology/page.tsx)
 - [Architecture](./docs/architecture.md)
 - [Dogfooding notes](./docs/dogfooding-notes.md)
 - [Demo scripts](./docs/demo-script.md)
-- [Application copy](./docs/application-copy.md)
+- [Application and resume copy](./docs/application-copy.md)
 - [Screenshot plan](./docs/screenshots.md)
 - [Security and privacy](./docs/security-privacy.md)
 
-## Licence
-
-Portfolio source available for review. See [PORTFOLIO-LICENSE.md](./PORTFOLIO-LICENSE.md).
-
----
-
-Built independently by Ugo Umeano. Not affiliated with or endorsed by Shopify.
+Portfolio source available for review under [PORTFOLIO-LICENSE.md](./PORTFOLIO-LICENSE.md). Built independently by Ugo Umeano; not affiliated with or endorsed by Shopify.

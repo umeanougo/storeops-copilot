@@ -1,114 +1,183 @@
-import type { Customer, Order, Product, Refund, StoreSnapshot } from "@/lib/domain/types";
+import type { Customer, FulfillmentState, FinancialState, Merchant, Order, Product, Refund, ShopifyStore, StoreSnapshot } from "@/lib/domain/types";
 
 const currencyCode = "CAD";
 const money = (amount: number) => ({ amount, currencyCode });
 const at = (base: Date, hoursAgo: number) => new Date(base.getTime() - hoursAgo * 3_600_000).toISOString();
 
+const merchantSeeds = [
+  { id: "mer_northstar", name: "Northstar Goods", store: "Northstar Supply", slug: "northstar-supply", sla: 24, previous: 2, open: 6 },
+  { id: "mer_cedar", name: "Cedar & Coast", store: "Cedar & Coast Home", slug: "cedar-coast-home", sla: 36, previous: 3, open: 4 },
+  { id: "mer_field", name: "Fieldwork Outfitters", store: "Fieldwork Canada", slug: "fieldwork-canada", sla: 24, previous: 3, open: 3 },
+  { id: "mer_juniper", name: "Juniper Table", store: "Juniper Tableware", slug: "juniper-tableware", sla: 48, previous: 2, open: 3 },
+  { id: "mer_lumen", name: "Lumen Paper Co.", store: "Lumen Paper Shop", slug: "lumen-paper-shop", sla: 24, previous: 2, open: 2 },
+  { id: "mer_morrow", name: "Morrow Skin", store: "Morrow Skin Canada", slug: "morrow-skin-ca", sla: 36, previous: 1, open: 4 },
+  { id: "mer_pine", name: "Pine & Path", store: "Pine & Path Goods", slug: "pine-path-goods", sla: 48, previous: 2, open: 1 },
+  { id: "mer_alder", name: "Alder & Tide", store: "Alder & Tide Studio", slug: "alder-tide-studio", sla: 48, previous: 0, open: 0 },
+] as const;
+
+const productNames = [
+  ["Transit Weekender", "Studio Utility Jacket"],
+  ["Washed Linen Throw", "Cedar Vessel Candle"],
+  ["Trail Canvas Tote", "Alpine Overshirt"],
+  ["Stacking Stoneware Set", "Oak Serving Board"],
+  ["Daily Planning Set", "Archival Notebook"],
+  ["Barrier Recovery Cream", "Mineral Cleanser"],
+  ["Camp Enamel Set", "Packable Trail Blanket"],
+  ["Tidal Vase", "Drift Linen Runner"],
+] as const;
+
+const openStatuses: Array<{ fulfillment: FulfillmentState; financial: FinancialState; age: number }> = [
+  { fulfillment: "UNFULFILLED", financial: "PAID", age: 79 },
+  { fulfillment: "PARTIALLY_FULFILLED", financial: "PAID", age: 54 },
+  { fulfillment: "UNFULFILLED", financial: "PENDING", age: 31 },
+  { fulfillment: "UNFULFILLED", financial: "PAID", age: 27 },
+  { fulfillment: "IN_PROGRESS", financial: "PAID", age: 18 },
+  { fulfillment: "ON_HOLD", financial: "AUTHORIZED", age: 9 },
+];
+
 export function createDemoSnapshot(asOf = new Date("2026-08-02T14:00:00-04:00")): StoreSnapshot {
-  const customers: Customer[] = [
-    { id: "cus_maya", name: "Maya Chen", email: "maya.chen@example.test", ordersCount: 18, lifetimeValue: money(5_680), lastOrderAt: at(asOf, 76), tags: ["VIP", "Repeat"] },
-    { id: "cus_noah", name: "Noah Williams", email: "noah.williams@example.test", ordersCount: 11, lifetimeValue: money(3_240), lastOrderAt: at(asOf, 18), tags: ["VIP"] },
-    { id: "cus_amara", name: "Amara Singh", email: "amara.singh@example.test", ordersCount: 8, lifetimeValue: money(2_150), lastOrderAt: at(asOf, 51), tags: ["Repeat"] },
-    { id: "cus_liam", name: "Liam Martin", email: "liam.martin@example.test", ordersCount: 6, lifetimeValue: money(1_460), lastOrderAt: at(asOf, 30), tags: [] },
-    { id: "cus_sofia", name: "Sofia Garcia", email: "sofia.garcia@example.test", ordersCount: 4, lifetimeValue: money(980), lastOrderAt: at(asOf, 8), tags: [] },
-    { id: "cus_ethan", name: "Ethan Brown", email: "ethan.brown@example.test", ordersCount: 3, lifetimeValue: money(725), lastOrderAt: at(asOf, 96), tags: [] },
-    { id: "cus_ava", name: "Ava Thompson", email: "ava.thompson@example.test", ordersCount: 2, lifetimeValue: money(440), lastOrderAt: at(asOf, 25), tags: [] },
-    { id: "cus_lucas", name: "Lucas Roy", email: "lucas.roy@example.test", ordersCount: 1, lifetimeValue: money(195), lastOrderAt: at(asOf, 4), tags: ["New"] },
-  ];
+  const provider = { id: "fp_harbour", name: "Harbour Fulfilment Collective" };
+  const merchants: Merchant[] = merchantSeeds.map(seed => ({
+    id: seed.id,
+    fulfillmentProviderId: provider.id,
+    name: seed.name,
+    status: "active",
+    serviceLevelTargetHours: seed.sla,
+    primaryContact: "Simulated merchant contact",
+    previousOpenOrders: seed.previous,
+  }));
+  const stores: ShopifyStore[] = merchantSeeds.map((seed, index) => ({
+    id: `store_${index + 1}`,
+    merchantId: seed.id,
+    name: seed.store,
+    domain: `${seed.slug}-demo.myshopify.com`,
+    currencyCode,
+    timezone: "America/Toronto",
+    connectionStatus: "demo",
+    mode: "demo",
+  }));
 
-  const products: Product[] = [
-    {
-      id: "prod_terra", title: "Terra Weekender", productType: "Bags", status: "ACTIVE",
-      variants: [
-        { id: "var_terra_olive", productId: "prod_terra", productTitle: "Terra Weekender", title: "Olive", sku: "TW-OLV", available: 3, price: money(195), unitsSold7d: 8, unitsSold30d: 24, lastSoldAt: at(asOf, 4) },
-        { id: "var_terra_sand", productId: "prod_terra", productTitle: "Terra Weekender", title: "Sand", sku: "TW-SND", available: 18, price: money(195), unitsSold7d: 4, unitsSold30d: 17, lastSoldAt: at(asOf, 18) },
-      ],
-    },
-    {
-      id: "prod_tote", title: "Field Canvas Tote", productType: "Bags", status: "ACTIVE",
-      variants: [
-        { id: "var_tote_natural", productId: "prod_tote", productTitle: "Field Canvas Tote", title: "Natural", sku: "FC-NAT", available: 42, price: money(90), unitsSold7d: 12, unitsSold30d: 39, lastSoldAt: at(asOf, 8) },
-        { id: "var_tote_navy", productId: "prod_tote", productTitle: "Field Canvas Tote", title: "Navy", sku: "FC-NVY", available: 31, price: money(90), unitsSold7d: 7, unitsSold30d: 28, lastSoldAt: at(asOf, 25) },
-      ],
-    },
-    {
-      id: "prod_knit", title: "Harbour Knit", productType: "Apparel", status: "ACTIVE",
-      variants: [
-        { id: "var_knit_s", productId: "prod_knit", productTitle: "Harbour Knit", title: "Small / Oat", sku: "HK-S-OAT", available: 12, price: money(125), unitsSold7d: 3, unitsSold30d: 11, lastSoldAt: at(asOf, 22) },
-        { id: "var_knit_m", productId: "prod_knit", productTitle: "Harbour Knit", title: "Medium / Oat", sku: "HK-M-OAT", available: 2, price: money(125), unitsSold7d: 6, unitsSold30d: 18, lastSoldAt: at(asOf, 12) },
-        { id: "var_knit_l", productId: "prod_knit", productTitle: "Harbour Knit", title: "Large / Oat", sku: "HK-L-OAT", available: 0, price: money(125), unitsSold7d: 4, unitsSold30d: 15, lastSoldAt: at(asOf, 16) },
-      ],
-    },
-    {
-      id: "prod_throw", title: "Linen Throw", productType: "Home", status: "ACTIVE",
-      variants: [
-        { id: "var_throw_clay", productId: "prod_throw", productTitle: "Linen Throw", title: "Clay", sku: "LT-CLY", available: 142, price: money(89), unitsSold7d: 0, unitsSold30d: 2, lastSoldAt: at(asOf, 410) },
-        { id: "var_throw_sage", productId: "prod_throw", productTitle: "Linen Throw", title: "Sage", sku: "LT-SGE", available: 74, price: money(89), unitsSold7d: 1, unitsSold30d: 5, lastSoldAt: at(asOf, 66) },
-      ],
-    },
-    {
-      id: "prod_candle", title: "Wicklow Candle", productType: "Home", status: "ACTIVE",
-      variants: [
-        { id: "var_candle_cedar", productId: "prod_candle", productTitle: "Wicklow Candle", title: "Cedar", sku: "WC-CDR", available: 96, price: money(39), unitsSold7d: 0, unitsSold30d: 0, lastSoldAt: at(asOf, 1_080) },
-        { id: "var_candle_fig", productId: "prod_candle", productTitle: "Wicklow Candle", title: "Fig", sku: "WC-FIG", available: 54, price: money(39), unitsSold7d: 2, unitsSold30d: 9, lastSoldAt: at(asOf, 32) },
-      ],
-    },
-    {
-      id: "prod_cup", title: "Stoneware Cup", productType: "Home", status: "ACTIVE",
-      variants: [
-        { id: "var_cup_chalk", productId: "prod_cup", productTitle: "Stoneware Cup", title: "Chalk", sku: "SC-CHK", available: 84, price: money(36), unitsSold7d: 0, unitsSold30d: 1, lastSoldAt: at(asOf, 312) },
-        { id: "var_cup_ink", productId: "prod_cup", productTitle: "Stoneware Cup", title: "Ink", sku: "SC-INK", available: 27, price: money(36), unitsSold7d: 3, unitsSold30d: 12, lastSoldAt: at(asOf, 14) },
-      ],
-    },
-    {
-      id: "prod_jacket", title: "Ridge Utility Jacket", productType: "Apparel", status: "ACTIVE",
-      variants: [
-        { id: "var_jacket_m", productId: "prod_jacket", productTitle: "Ridge Utility Jacket", title: "Medium / Moss", sku: "RJ-M-MOS", available: 5, price: money(225), unitsSold7d: 3, unitsSold30d: 9, lastSoldAt: at(asOf, 6) },
-        { id: "var_jacket_l", productId: "prod_jacket", productTitle: "Ridge Utility Jacket", title: "Large / Moss", sku: "RJ-L-MOS", available: 14, price: money(225), unitsSold7d: 2, unitsSold30d: 7, lastSoldAt: at(asOf, 20) },
-      ],
-    },
-  ];
-
-  const order = (value: Omit<Order, "updatedAt" | "fulfillmentCreatedAt"> & { updatedAtHours?: number; fulfillmentCreatedAtHours?: number }): Order => ({
-    ...value,
-    updatedAt: at(asOf, value.updatedAtHours ?? 1),
-    fulfillmentCreatedAt: value.fulfillmentCreatedAtHours == null ? null : at(asOf, value.fulfillmentCreatedAtHours),
+  const customers: Customer[] = merchantSeeds.flatMap((seed, merchantIndex) => {
+    const storeId = stores[merchantIndex].id;
+    return Array.from({ length: 3 }, (_, customerIndex) => ({
+      id: `cus_${merchantIndex + 1}_${customerIndex + 1}`,
+      merchantId: seed.id,
+      storeId,
+      name: `Customer ${String.fromCharCode(65 + merchantIndex)}${customerIndex + 1}`,
+      email: `customer-${merchantIndex + 1}-${customerIndex + 1}@example.test`,
+      ordersCount: 4 + customerIndex * 3,
+      lifetimeValue: money(customerIndex === 0 ? 2_400 + merchantIndex * 110 : 620 + customerIndex * 280),
+      lastOrderAt: at(asOf, 6 + merchantIndex * 4 + customerIndex * 11),
+      tags: customerIndex === 0 ? ["Repeat", "High value"] : customerIndex === 1 ? ["Repeat"] : [],
+    }));
   });
 
-  const orders: Order[] = [
-    order({ id: "ord_1052", name: "#1052", createdAt: at(asOf, 76), updatedAtHours: 70, customerId: "cus_maya", customerName: "Maya Chen", total: money(418), fulfillmentStatus: "UNFULFILLED", financialStatus: "PAID", lineItems: [
-      { id: "li_1052_1", productId: "prod_terra", variantId: "var_terra_olive", title: "Terra Weekender", variantTitle: "Olive", quantity: 1, total: money(195) },
-      { id: "li_1052_2", productId: "prod_jacket", variantId: "var_jacket_m", title: "Ridge Utility Jacket", variantTitle: "Medium / Moss", quantity: 1, total: money(223) },
-    ] }),
-    order({ id: "ord_1059", name: "#1059", createdAt: at(asOf, 51), updatedAtHours: 9, customerId: "cus_amara", customerName: "Amara Singh", total: money(250), fulfillmentStatus: "IN_PROGRESS", financialStatus: "PAID", lineItems: [{ id: "li_1059_1", productId: "prod_knit", variantId: "var_knit_m", title: "Harbour Knit", variantTitle: "Medium / Oat", quantity: 2, total: money(250) }] }),
-    order({ id: "ord_1064", name: "#1064", createdAt: at(asOf, 30), customerId: "cus_liam", customerName: "Liam Martin", total: money(180), fulfillmentStatus: "UNFULFILLED", financialStatus: "PAID", lineItems: [{ id: "li_1064_1", productId: "prod_tote", variantId: "var_tote_natural", title: "Field Canvas Tote", variantTitle: "Natural", quantity: 2, total: money(180) }] }),
-    order({ id: "ord_1067", name: "#1067", createdAt: at(asOf, 25), customerId: "cus_ava", customerName: "Ava Thompson", total: money(214), fulfillmentStatus: "ON_HOLD", financialStatus: "PENDING", lineItems: [{ id: "li_1067_1", productId: "prod_knit", variantId: "var_knit_s", title: "Harbour Knit", variantTitle: "Small / Oat", quantity: 1, total: money(125) }, { id: "li_1067_2", productId: "prod_throw", variantId: "var_throw_sage", title: "Linen Throw", variantTitle: "Sage", quantity: 1, total: money(89) }] }),
-    order({ id: "ord_1068", name: "#1068", createdAt: at(asOf, 18), customerId: "cus_noah", customerName: "Noah Williams", total: money(285), fulfillmentStatus: "FULFILLED", financialStatus: "PAID", fulfillmentCreatedAtHours: 7, lineItems: [{ id: "li_1068_1", productId: "prod_terra", variantId: "var_terra_sand", title: "Terra Weekender", variantTitle: "Sand", quantity: 1, total: money(195) }, { id: "li_1068_2", productId: "prod_tote", variantId: "var_tote_navy", title: "Field Canvas Tote", variantTitle: "Navy", quantity: 1, total: money(90) }] }),
-    order({ id: "ord_1069", name: "#1069", createdAt: at(asOf, 14), customerId: "cus_sofia", customerName: "Sofia Garcia", total: money(125), fulfillmentStatus: "FULFILLED", financialStatus: "PAID", fulfillmentCreatedAtHours: 5, lineItems: [{ id: "li_1069_1", productId: "prod_knit", variantId: "var_knit_m", title: "Harbour Knit", variantTitle: "Medium / Oat", quantity: 1, total: money(125) }] }),
-    order({ id: "ord_1070", name: "#1070", createdAt: at(asOf, 10), customerId: "cus_lucas", customerName: "Lucas Roy", total: money(195), fulfillmentStatus: "PARTIALLY_FULFILLED", financialStatus: "PAID", fulfillmentCreatedAtHours: 3, lineItems: [{ id: "li_1070_1", productId: "prod_terra", variantId: "var_terra_olive", title: "Terra Weekender", variantTitle: "Olive", quantity: 1, total: money(195) }] }),
-    order({ id: "ord_1071", name: "#1071", createdAt: at(asOf, 8), customerId: "cus_sofia", customerName: "Sofia Garcia", total: money(270), fulfillmentStatus: "FULFILLED", financialStatus: "PAID", fulfillmentCreatedAtHours: 2, lineItems: [{ id: "li_1071_1", productId: "prod_tote", variantId: "var_tote_natural", title: "Field Canvas Tote", variantTitle: "Natural", quantity: 3, total: money(270) }] }),
-    order({ id: "ord_1072", name: "#1072", createdAt: at(asOf, 4), customerId: "cus_lucas", customerName: "Lucas Roy", total: money(225), fulfillmentStatus: "UNFULFILLED", financialStatus: "PAID", lineItems: [{ id: "li_1072_1", productId: "prod_jacket", variantId: "var_jacket_m", title: "Ridge Utility Jacket", variantTitle: "Medium / Moss", quantity: 1, total: money(225) }] }),
-    order({ id: "ord_1048", name: "#1048", createdAt: at(asOf, 190), customerId: "cus_ethan", customerName: "Ethan Brown", total: money(178), fulfillmentStatus: "FULFILLED", financialStatus: "PARTIALLY_REFUNDED", fulfillmentCreatedAtHours: 180, lineItems: [{ id: "li_1048_1", productId: "prod_throw", variantId: "var_throw_clay", title: "Linen Throw", variantTitle: "Clay", quantity: 2, total: money(178) }] }),
-    order({ id: "ord_1047", name: "#1047", createdAt: at(asOf, 220), customerId: "cus_noah", customerName: "Noah Williams", total: money(225), fulfillmentStatus: "FULFILLED", financialStatus: "PARTIALLY_REFUNDED", fulfillmentCreatedAtHours: 205, lineItems: [{ id: "li_1047_1", productId: "prod_jacket", variantId: "var_jacket_l", title: "Ridge Utility Jacket", variantTitle: "Large / Moss", quantity: 1, total: money(225) }] }),
-    order({ id: "ord_1043", name: "#1043", createdAt: at(asOf, 310), customerId: "cus_amara", customerName: "Amara Singh", total: money(90), fulfillmentStatus: "FULFILLED", financialStatus: "REFUNDED", fulfillmentCreatedAtHours: 300, lineItems: [{ id: "li_1043_1", productId: "prod_tote", variantId: "var_tote_navy", title: "Field Canvas Tote", variantTitle: "Navy", quantity: 1, total: money(90) }] }),
-    order({ id: "ord_1035", name: "#1035", createdAt: at(asOf, 400), customerId: "cus_liam", customerName: "Liam Martin", total: money(39), fulfillmentStatus: "FULFILLED", financialStatus: "PARTIALLY_REFUNDED", fulfillmentCreatedAtHours: 390, lineItems: [{ id: "li_1035_1", productId: "prod_candle", variantId: "var_candle_fig", title: "Wicklow Candle", variantTitle: "Fig", quantity: 1, total: money(39) }] }),
-  ];
+  const products: Product[] = merchantSeeds.flatMap((seed, merchantIndex) => {
+    const storeId = stores[merchantIndex].id;
+    return productNames[merchantIndex].map((title, productIndex) => {
+      const productId = `prod_${merchantIndex + 1}_${productIndex + 1}`;
+      const constrained = (merchantIndex === 0 && productIndex === 0) || (merchantIndex === 1 && productIndex === 1);
+      const available = constrained ? (merchantIndex === 0 ? 0 : 2) : 18 + merchantIndex * 4 + productIndex * 12;
+      return {
+        id: productId,
+        merchantId: seed.id,
+        storeId,
+        title,
+        productType: productIndex === 0 ? "Core assortment" : "Seasonal assortment",
+        status: "ACTIVE" as const,
+        variants: [{
+          id: `var_${merchantIndex + 1}_${productIndex + 1}`,
+          merchantId: seed.id,
+          storeId,
+          productId,
+          productTitle: title,
+          title: productIndex === 0 ? "Standard" : "Primary",
+          sku: `SKU-${merchantIndex + 1}${productIndex + 1}-DEMO`,
+          available,
+          price: money(42 + merchantIndex * 9 + productIndex * 38),
+          unitsSold7d: 3 + ((merchantIndex + productIndex) % 7),
+          unitsSold30d: 10 + merchantIndex * 2 + productIndex * 4,
+          lastSoldAt: at(asOf, 3 + merchantIndex * 2),
+        }],
+      };
+    });
+  });
+
+  const orders: Order[] = [];
+  for (const [merchantIndex, seed] of merchantSeeds.entries()) {
+    const storeId = stores[merchantIndex].id;
+    const merchantProducts = products.filter(product => product.merchantId === seed.id);
+    for (let orderIndex = 0; orderIndex < 7; orderIndex++) {
+      const isOpen = orderIndex < seed.open;
+      const openState = openStatuses[orderIndex] ?? openStatuses[5];
+      const fulfillmentStatus: FulfillmentState = isOpen ? openState.fulfillment : "FULFILLED";
+      const financialStatus: FinancialState = isOpen ? openState.financial : "PAID";
+      const age = isOpen ? openState.age + merchantIndex * 2 : 4 + orderIndex * 5 + merchantIndex;
+      const customer = customers.find(item => item.merchantId === seed.id && item.id.endsWith(`_${(orderIndex % 3) + 1}`))!;
+      const product = merchantProducts[orderIndex % merchantProducts.length];
+      const variant = product.variants[0];
+      const quantity = orderIndex % 3 === 0 ? 2 : 1;
+      const highValue = merchantIndex === 0 && orderIndex === 0;
+      const amount = highValue ? 780 : variant.price.amount * quantity;
+      const orderId = `ord_${merchantIndex + 1}_${orderIndex + 1}`;
+      orders.push({
+        id: orderId,
+        merchantId: seed.id,
+        storeId,
+        name: `#${2100 + merchantIndex * 100 + orderIndex + 1}`,
+        createdAt: at(asOf, age),
+        updatedAt: at(asOf, Math.max(1, age - 3)),
+        customerId: customer.id,
+        customerName: customer.name,
+        total: money(amount),
+        fulfillmentStatus,
+        financialStatus,
+        fulfillmentCreatedAt: fulfillmentStatus === "FULFILLED" ? at(asOf, Math.max(1, age - 4)) : fulfillmentStatus === "PARTIALLY_FULFILLED" ? at(asOf, 8) : null,
+        tags: highValue ? ["priority-review"] : [],
+        notes: orderIndex === 2 && isOpen ? "Simulated note: confirm payment before releasing inventory." : "",
+        riskSignals: variant.available < quantity && isOpen ? ["inventory_shortfall"] : [],
+        lineItems: [{
+          id: `li_${merchantIndex + 1}_${orderIndex + 1}`,
+          productId: product.id,
+          variantId: variant.id,
+          title: product.title,
+          variantTitle: variant.title,
+          quantity,
+          total: money(amount),
+        }],
+      });
+    }
+  }
 
   const refunds: Refund[] = [
-    { id: "ref_1048", orderId: "ord_1048", orderName: "#1048", createdAt: at(asOf, 35), amount: money(89), reason: "Returned item" },
-    { id: "ref_1047", orderId: "ord_1047", orderName: "#1047", createdAt: at(asOf, 52), amount: money(125), reason: "Size exchange" },
-    { id: "ref_1043", orderId: "ord_1043", orderName: "#1043", createdAt: at(asOf, 90), amount: money(90), reason: "Order returned" },
-    { id: "ref_1035", orderId: "ord_1035", orderName: "#1035", createdAt: at(asOf, 260), amount: money(20), reason: "Damaged item" },
+    { id: "ref_1", merchantId: merchantSeeds[2].id, storeId: stores[2].id, orderId: "ord_3_7", orderName: "#2307", createdAt: at(asOf, 30), amount: money(48), reason: "Simulated return" },
+    { id: "ref_2", merchantId: merchantSeeds[2].id, storeId: stores[2].id, orderId: "ord_3_6", orderName: "#2306", createdAt: at(asOf, 62), amount: money(72), reason: "Simulated exchange" },
+    { id: "ref_3", merchantId: merchantSeeds[4].id, storeId: stores[4].id, orderId: "ord_5_7", orderName: "#2507", createdAt: at(asOf, 90), amount: money(39), reason: "Simulated return" },
   ];
+
+  const tasks = orders.filter(order => order.fulfillmentStatus !== "FULFILLED").map(order => ({
+    id: `task_${order.id}`,
+    merchantId: order.merchantId,
+    storeId: order.storeId,
+    orderId: order.id,
+    taskType: order.financialStatus === "PAID" ? "pick_pack" as const : "payment_check" as const,
+    status: order.financialStatus === "PAID" ? "open" as const : "blocked" as const,
+    priority: 0,
+    createdAt: order.createdAt,
+    dueAt: at(asOf, -4),
+  }));
 
   return {
     source: "demo",
     generatedAt: asOf.toISOString(),
-    shop: { name: "North & Pine Supply", domain: "north-pine-demo.myshopify.com", currencyCode, timezone: "America/Toronto" },
+    provider,
+    merchants,
+    stores,
     orders,
     customers,
     products,
     refunds,
-    warnings: ["This is simulated portfolio data. No real merchant or customer records are shown."],
+    tasks,
+    warnings: ["This is simulated portfolio data. No real merchant, customer, order, or product records are shown."],
   };
 }

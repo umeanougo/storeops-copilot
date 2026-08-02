@@ -8,7 +8,8 @@ describe("public store API", () => {
 
     expect(body.requestedMode).toBe("demo");
     expect(body.snapshot.source).toBe("demo");
-    expect(body.snapshot.shop.domain).toContain("-demo.myshopify.com");
+    expect(body.snapshot.stores).toHaveLength(8);
+    expect(body.snapshot.stores.every((store:{domain:string}) => store.domain.includes("-demo.myshopify.com"))).toBe(true);
     expect(response.headers.get("cache-control")).toBe("no-store");
   });
 });

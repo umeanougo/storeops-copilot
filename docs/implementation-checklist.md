@@ -1,55 +1,51 @@
 # Implementation checklist
 
-## Phase 1 — complete demo experience
+## Product model
 
-- [x] Realistic synthetic dataset
-- [x] Persistent demo-data label
-- [x] Focused overview dashboard
-- [x] Daily Operations Brief
-- [x] Deterministic alert engine
-- [x] Overdue-order workflow
-- [x] Low- and excess-inventory workflows
-- [x] Explainable issue detail
-- [x] Grounded Ask Store interface
-- [x] Unsupported-question handling
-- [x] Deterministic AI fallback
-- [x] Orders, inventory, and customer record views
+- [x] Provider → merchant → store model
+- [x] One simulated provider, eight merchants, eight stores, 56 orders
+- [x] Merchant/store context on records, alerts, answers, recommendations, and tasks
+- [x] Persistent simulated-data and read-only labels
+- [x] Unified actionable order queue with required filters and sorting
+- [x] Merchant backlog list and detail
+- [x] Multi-merchant order, inventory, exception, and detail workflows
 
-## Phase 2 — application-ready artifacts
+## Rules and AI
 
-- [x] Case-study page
-- [x] Methodology page
+- [x] Paid/unfulfilled, 24h, 48h, high-value, customer-delay, partial, unusual, payment-block, inventory, and backlog rules
+- [x] Deterministic operational priority model
+- [x] Cross-store and merchant/store-scoped retrieval
+- [x] Exact record/answer allowlists and schema validation
+- [x] Unsupported-question and deterministic provider-failure behavior
+- [x] No Shopify write path
+
+## Portfolio artifacts
+
+- [x] Corrected case study and methodology
 - [x] README and architecture
-- [x] Business-logic tests
-- [x] Demo scripts
-- [x] Application copy
-- [x] Dogfooding journal
-- [x] Security and privacy notes
-- [x] Final screenshots
-- [x] Public deployment
-- [x] GitHub repository
+- [x] Application copy under 700 and 1,500 characters
+- [x] 30-second, 90-second, and three-minute scripts
+- [x] LinkedIn and three-bullet resume copy
+- [x] Dogfooding and security notes
+- [ ] Refresh screenshots from validated multi-merchant deployment
 
-## Phase 3 — optional live Shopify connection
+## Quality and release gate
 
-- [x] Server-side Admin GraphQL client
-- [x] Pinned API version
-- [x] Cursor pagination with prototype cap
-- [x] Optional-field and currency normalization
-- [x] Top-level error handling
-- [x] Throttle metadata awareness
-- [x] Live/demo mode indicator and fallback
-- [x] Required-scope documentation
-- [ ] Credential-backed development-store verification
+- [ ] Domain and resilience tests pass
+- [ ] Lint passes without warnings
+- [ ] Type check passes
+- [ ] Production build passes
+- [ ] Desktop and mobile preview QA
+- [ ] Keyboard and filter path review
+- [ ] `git diff --check`
+- [ ] Secret scan
+- [ ] Terminology, ownership, and unsupported-claim scan
+- [ ] Preview deployment validated
+- [ ] Existing production URL updated and validated
 
-## Final quality gate
+## Credential-dependent verification
 
-- [x] Lint
-- [x] Type check
-- [x] Business-logic tests
-- [x] Production build
-- [x] Visual and responsive QA
-- [x] Keyboard path review
-- [x] `git diff --check`
-- [x] Secret scan
-- [x] Ownership-language scan
-- [x] Clean-install verification
+- [x] Server-only single/multi-store connection architecture
+- [x] Pinned API version and read-only query fields
+- [x] Missing-credential and failed-live fallback
+- [ ] Credential-backed multi-store development-shop test

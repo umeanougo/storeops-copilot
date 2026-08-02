@@ -1,62 +1,61 @@
 # Personal dogfooding notes
 
-This journal records personal testing of the portfolio prototype. It is **not merchant feedback** and does not represent external validation.
+This journal records my own testing of the portfolio prototype. It is **not external operator feedback**, production evidence, or a measured outcome.
 
-## Questions used during testing
+## Scenarios exercised
 
-- Which orders have been waiting the longest?
-- Which products are running low?
-- Which products have too much inventory?
-- Which three issues should I address first?
-- Did refunds increase recently?
-- Which customers have the highest lifetime value?
-- Why was order #1052 flagged?
-- What is gross margin by channel? (unsupported-case test)
+- Reviewed workload across all eight simulated merchant stores.
+- Filtered the unified queue to one merchant and then one store.
+- Found all open orders older than 48 hours and all paid/unfulfilled orders.
+- Compared merchant backlog size, average age, oldest order, trend, and risk.
+- Inspected a partially fulfilled order and a payment-blocked order.
+- Followed an inventory constraint from order to same-store variant availability.
+- Asked cross-store questions and merchant-specific questions.
+- Confirmed every answer and evidence label retained merchant/store context.
+- Checked the empty/no-risk merchant and no-finding answer state.
+- Removed OpenAI and Shopify credentials to verify deterministic/demo fallbacks.
+- Tampered with merchant/store references in tests to verify rejection.
 
-## Early interactions that felt confusing
+## Confusing interactions and changes
 
-- “AI-generated brief” would have been misleading when no key was present. The UI now labels the result “Rule-generated” or “AI-constrained.”
-- An inventory warning without its threshold felt arbitrary. Issue detail now shows the exact rule and configured threshold.
-- A recommendation next to a finding could look like an automated action. The product now labels it a suggested review step and repeats the read-only boundary.
-- A demo that silently fell back after a live error could hide integration failure. The source banner now states when live mode was requested but demo fallback is active.
+- A complete order list looked like reporting rather than operations. The default now surfaces actionable work and keeps “all orders” as an explicit view.
+- A priority number alone felt arbitrary. Rows show reasons and a recommended next step; order detail exposes every rule input.
+- Store identity was visually secondary in early rows. Merchant and client-store labels are now attached to every operational record and evidence item.
+- “AI-generated” overstated the role of the model. Labels now distinguish deterministic fallback from AI-constrained synthesis.
+- A recommendation could look executed. Copy now says “recommended next step” and repeats the read-only boundary.
+- A silent live failure could hide an integration problem. The source banner states when live mode was requested but simulated fallback is active.
 
-## False or weak alerts identified
+## Prioritization issues found
 
-- High inventory alone was too weak. The excess rule now requires both high availability and low 30-day velocity.
-- Customer lifetime value alone was not an operational issue. Customer risk now requires a linked overdue order.
-- Refund count alone lacked a baseline. The rule now compares the current seven-day count with the immediately preceding period.
-- Two customer-risk alerts originally tied at the maximum priority, allowing alphabetical order to decide the sequence. The score now uses elapsed delay and lifetime-value bands as deterministic tie-breakers.
+- Age alone could elevate an unpaid order above ready work. The score now treats payment state as a blocker and recommends merchant review instead of picking.
+- Partial fulfilment needed its own signal rather than appearing as generic open work.
+- Service-level targets needed to affect urgency, not just a global 48-hour threshold.
+- Inventory availability had to be joined only within the same store.
+- Alphabetical ties obscured operational intent; deterministic age, value, backlog, customer, and inventory inputs now break ties.
 
-## Grounding improvements
+## Cross-merchant leakage checks
 
-- Natural-language questions map to a closed intent registry rather than arbitrary database queries.
-- Relevant records are selected before the model call instead of sending the entire dataset.
-- Every evidence record ID is checked against an allowlist.
-- Unsupported questions return no citations and clearly state the missing data.
-- Any OpenAI error, invalid schema, or unknown evidence ID uses the deterministic fallback.
+- Every domain record and task requires `merchantId` and `storeId`.
+- Named merchant/store questions create a scoped record allowlist before synthesis.
+- Customer value is never aggregated between unrelated stores.
+- AI output with an unknown merchant, store, order, label, value, link, or ordering is rejected.
+- The public demo is explicitly an internal provider view, not a merchant portal.
 
-## Edge cases exercised
+## Weak-answer checks
 
-- exactly 48 hours versus one millisecond beyond the threshold
-- fulfilled old order versus unfulfilled old order
-- inventory exactly at versus below the floor
-- zero inventory severity
-- high inventory with adequate recent velocity
-- missing Shopify customer, fulfilment, variant, and money fields
-- empty dataset and no-alert brief
-- missing Shopify credentials
-- missing OpenAI key
-- unknown record reference in a generated answer
+- Unsupported questions return no evidence and state what data is missing.
+- No-finding questions distinguish “zero detected” from missing information.
+- Answers link to the record that supports the conclusion rather than citing a generic metric.
+- Recommendations are concise, operational, and visibly separate from facts.
 
-## What still feels incomplete
+## Remaining limitations
 
-- Prototype defaults need merchant-specific validation.
-- The refund baseline is intentionally simple.
-- Priority scoring would benefit from merchant feedback on urgency and impact.
-- Live history coverage should be explicit at record and metric level.
-- The app does not yet support conversational follow-ups or record disambiguation.
-- Live development-store behavior still needs credential-backed verification.
+- Rule weights and per-merchant targets have not been validated with external operators.
+- The simulated backlog trend is a snapshot field, not an event-sourced history.
+- There is no staffing, carrier cutoff, warehouse location, inbound stock, or pick-capacity context.
+- Live eight-store retrieval and throttling behavior remain credential-dependent.
+- There are no conversational follow-ups, write actions, OAuth lifecycle, roles, or production tenant controls.
 
-## Next dogfooding session
+## Recommended next session
 
-Run the three-minute script without shortcuts. Record every moment that requires explaining around the interface. Any explanation that should be visible in-product becomes a copy or hierarchy candidate; anything that is secondary stays in the case study.
+Observe a fulfilment operator completing a real morning triage without the prototype, then replay the same source records in a protected test environment. Compare missed/false alerts, account switches, time to enumerate awaiting work, ranking disagreements, evidence trust, and required merchant-specific exceptions. Treat every metric as proposed until that session occurs.

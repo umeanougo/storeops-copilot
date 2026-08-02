@@ -1,12 +1,12 @@
 import { z } from "zod";
-import type { OperationalAlert, StoreSnapshot, SupportingDatum } from "@/lib/domain/types";
-import type { OperationsMetrics } from "@/lib/domain/types";
-import { formatMoney, hoursBetween } from "@/lib/domain/format";
-import { highestValueCustomers, topSellingProducts } from "@/lib/domain/metrics";
+import type { OperationalAlert, OperationsMetrics, Order, StoreSnapshot } from "@/lib/domain/types";
+import { ageLabel, hoursBetween } from "@/lib/domain/format";
+import { calculateMerchantBacklogs, calculateOrderPriority, getPrioritizedOrders, isOpenOrder } from "@/lib/domain/metrics";
+import { DEFAULT_THRESHOLDS } from "@/lib/domain/config";
 
 export const evidenceSchema = z.object({
   recordId: z.string(),
-  recordType: z.enum(["order", "product", "variant", "customer", "refund", "alert"]),
+  recordType: z.enum(["order", "product", "variant", "customer", "refund", "alert", "merchant", "store"]),
   label: z.string(),
   value: z.string(),
   href: z.string(),
@@ -23,11 +23,12 @@ export const askStoreAnswerSchema = z.object({
 });
 
 export type AskStoreAnswer = z.infer<typeof askStoreAnswerSchema>;
-export type AskIntent = "overdue_orders" | "low_stock" | "excess_inventory" | "vip_customers" | "recent_changes" | "why_flagged" | "priorities" | "refunds" | "delayed_customers" | "no_sales" | "top_products" | "unsupported";
+export type AskIntent = "merchant_overdue" | "paid_unfulfilled" | "over_48" | "priorities" | "backlog_change" | "oldest_store" | "blocked_orders" | "inventory_blockers" | "workload_summary" | "why_flagged" | "delayed_customers" | "merchant_attention" | "unsupported";
 
 export type GroundingContext = {
   intent: AskIntent;
   question: string;
+  scope: { merchantId: string | null; storeId: string | null };
   facts: Record<string, unknown>;
   allowedRecordIds: string[];
 };
@@ -35,160 +36,140 @@ export type GroundingContext = {
 export function classifyIntent(question: string): AskIntent {
   const q = question.toLowerCase();
   if ((q.includes("why") || q.includes("flag")) && (q.includes("order") || q.includes("#"))) return "why_flagged";
-  if (q.includes("waiting") || q.includes("longest") || q.includes("overdue")) return "overdue_orders";
-  if (q.includes("running low") || q.includes("low stock") || q.includes("stockout")) return "low_stock";
-  if (q.includes("too much") || q.includes("excess") || q.includes("overstock")) return "excess_inventory";
-  if (q.includes("no recent sales") || q.includes("not selling") || q.includes("no sales")) return "no_sales";
-  if (q.includes("lifetime value") || q.includes("highest-value") || q.includes("highest value") || q.includes("vip")) return "vip_customers";
-  if (q.includes("changed") || q.includes("last seven") || q.includes("last 7") || q.includes("this week")) return "recent_changes";
-  if (q.includes("three issues") || q.includes("3 issues") || q.includes("address first") || q.includes("priority") || q.includes("priorities")) return "priorities";
-  if (q.includes("refund")) return "refunds";
-  if (q.includes("delayed order") && q.includes("customer")) return "delayed_customers";
-  if (q.includes("top-selling") || q.includes("top selling") || q.includes("most revenue")) return "top_products";
+  if (q.includes("paid") && (q.includes("unfulfilled") || q.includes("awaiting"))) return "paid_unfulfilled";
+  if (q.includes("48") || q.includes("longer than") || q.includes("older than")) return "over_48";
+  if (q.includes("most overdue")) return "merchant_overdue";
+  if (q.includes("backlog") && (q.includes("increase") || q.includes("grew") || q.includes("changed"))) return "backlog_change";
+  if (q.includes("oldest") && q.includes("store")) return "oldest_store";
+  if (q.includes("blocked")) return "blocked_orders";
+  if (q.includes("inventory") && (q.includes("prevent") || q.includes("block") || q.includes("fulfill"))) return "inventory_blockers";
+  if (q.includes("workload") || q.includes("by merchant")) return "workload_summary";
+  if (q.includes("high-value") || q.includes("high value") || q.includes("vip")) return "delayed_customers";
+  if (q.includes("process first") || q.includes("address first") || q.includes("priority") || q.includes("priorities")) return "priorities";
+  if (q.includes("attention") || q.includes("focus")) return "merchant_attention";
   return "unsupported";
 }
 
-function evidenceFromAlert(alert: OperationalAlert) {
-  return { recordId: alert.id, recordType: "alert" as const, label: alert.title, value: alert.detected, href: `/issues/${alert.id}` };
+function detectScope(question: string, snapshot: StoreSnapshot) {
+  const q = question.toLowerCase();
+  const merchant = snapshot.merchants.find(item => q.includes(item.name.toLowerCase()));
+  const store = snapshot.stores.find(item => q.includes(item.name.toLowerCase()));
+  return { merchantId: merchant?.id ?? store?.merchantId ?? null, storeId: store?.id ?? null };
+}
+
+function scopedOrders(snapshot: StoreSnapshot, scope: GroundingContext["scope"]) {
+  return snapshot.orders.filter(order => (!scope.merchantId || order.merchantId === scope.merchantId) && (!scope.storeId || order.storeId === scope.storeId));
 }
 
 export function buildGroundingContext(question: string, snapshot: StoreSnapshot, alerts: OperationalAlert[], metrics: OperationsMetrics): GroundingContext {
   const intent = classifyIntent(question);
-  const alertsOf = (types: OperationalAlert["issueType"][]) => alerts.filter(alert => types.includes(alert.issueType)).slice(0, 5);
-  let records: unknown[] = [];
-  switch (intent) {
-    case "overdue_orders": records = alertsOf(["overdue_order"]); break;
-    case "low_stock": records = alertsOf(["low_inventory"]); break;
-    case "excess_inventory": records = alertsOf(["excess_inventory"]); break;
-    case "priorities": records = alerts.slice(0, 3); break;
-    case "refunds": records = { metrics, alerts: alertsOf(["refund_activity"]), refunds: snapshot.refunds.slice(0, 5) } as unknown as unknown[]; break;
-    case "delayed_customers": records = alertsOf(["customer_risk"]); break;
-    case "no_sales": records = snapshot.products.flatMap(product => product.variants).filter(variant => variant.unitsSold30d === 0).slice(0, 5); break;
-    case "vip_customers": records = highestValueCustomers(snapshot, 5); break;
-    case "top_products": records = topSellingProducts(snapshot, 5).filter(product => product.unitsSold30d > 0); break;
-    case "recent_changes": records = [metrics, ...alerts.slice(0, 5)]; break;
-    case "why_flagged": {
-      const orderNumber = question.match(/#?\d{3,}/)?.[0]?.replace("#", "");
-      records = alerts.filter(alert => alert.issueType === "overdue_order" && (!orderNumber || alert.title.includes(orderNumber))).slice(0, 3);
-      break;
-    }
-    default: records = [];
-  }
-  const serialized = JSON.parse(JSON.stringify(records)) as unknown;
-  const ids = collectIds(serialized);
-  return { intent, question, facts: { asOf: snapshot.generatedAt, currency: snapshot.shop.currencyCode, records: serialized }, allowedRecordIds: ids };
-}
-
-function collectIds(value: unknown): string[] {
-  const ids = new Set<string>();
-  const visit = (item: unknown) => {
-    if (Array.isArray(item)) return item.forEach(visit);
-    if (item && typeof item === "object") {
-      for (const [key, nested] of Object.entries(item)) {
-        if ((key === "id" || key === "recordId" || key === "alertId" || key === "orderId") && typeof nested === "string") ids.add(nested);
-        visit(nested);
-      }
-    }
+  const scope = detectScope(question, snapshot);
+  const orders = scopedOrders(snapshot, scope);
+  const scopedAlerts = alerts.filter(alert => (!scope.merchantId || alert.merchantId === scope.merchantId) && (!scope.storeId || alert.storeId === scope.storeId));
+  const referencedOrder = question.match(/#\d+/)?.[0];
+  const facts = {
+    metrics,
+    scope,
+    merchantCount: snapshot.merchants.length,
+    storeCount: snapshot.stores.length,
+    orders: orders.slice(0, 20),
+    alerts: scopedAlerts.slice(0, 20),
+    referencedOrder,
+    backlogs: calculateMerchantBacklogs(snapshot, DEFAULT_THRESHOLDS),
   };
-  visit(value);
-  return [...ids];
-}
-
-function fromSupportingData(item: SupportingDatum, fallbackId: string) {
-  return { recordId: item.recordId ?? fallbackId, recordType: item.recordType ?? "alert" as const, label: item.label, value: item.value, href: item.recordType === "order" && item.recordId ? `/orders/${item.recordId}` : item.recordType === "customer" && item.recordId ? `/customers/${item.recordId}` : `/issues/${fallbackId}` };
+  const allowedRecordIds = new Set<string>();
+  for (const merchant of snapshot.merchants) if (!scope.merchantId || merchant.id === scope.merchantId) allowedRecordIds.add(merchant.id);
+  for (const store of snapshot.stores) if ((!scope.merchantId || store.merchantId === scope.merchantId) && (!scope.storeId || store.id === scope.storeId)) allowedRecordIds.add(store.id);
+  for (const order of orders) { allowedRecordIds.add(order.id); if (order.customerId) allowedRecordIds.add(order.customerId); for (const item of order.lineItems) { if (item.productId) allowedRecordIds.add(item.productId); if (item.variantId) allowedRecordIds.add(item.variantId); } }
+  for (const alert of scopedAlerts) allowedRecordIds.add(alert.id);
+  return { intent, question, scope, facts, allowedRecordIds: [...allowedRecordIds] };
 }
 
 export function createFallbackAnswer(context: GroundingContext, snapshot: StoreSnapshot, alerts: OperationalAlert[], metrics: OperationsMetrics): AskStoreAnswer {
-  const currency = snapshot.shop.currencyCode;
-  const byType = (type: OperationalAlert["issueType"]) => alerts.filter(alert => alert.issueType === type);
-  const answerBase = { caveat: "Based on available store data. Recommendations should be reviewed before action.", generatedBy: "deterministic_fallback" as const };
+  const merchantById = new Map(snapshot.merchants.map(merchant => [merchant.id, merchant]));
+  const storeById = new Map(snapshot.stores.map(store => [store.id, store]));
+  const scoped = scopedOrders(snapshot, context.scope);
+  const scopedAlerts = alerts.filter(alert => (!context.scope.merchantId || alert.merchantId === context.scope.merchantId) && (!context.scope.storeId || alert.storeId === context.scope.storeId));
+  const backlogs = calculateMerchantBacklogs(snapshot, DEFAULT_THRESHOLDS).filter(item => !context.scope.merchantId || item.merchantId === context.scope.merchantId);
+  const base = { caveat: "Based only on available simulated store data. Facts and recommendations are separated, and no Shopify action was performed.", generatedBy: "deterministic_fallback" as const };
+  const orderEvidence = (order: Order) => {
+    const merchant = merchantById.get(order.merchantId)!;
+    const store = storeById.get(order.storeId)!;
+    return { recordId: order.id, recordType: "order" as const, label: `${merchant.name} · ${store.name} · ${order.name}`, value: `${ageLabel(hoursBetween(snapshot.generatedAt, order.createdAt))} · ${order.financialStatus.replaceAll("_", " ")} · ${order.fulfillmentStatus.replaceAll("_", " ")}`, href: `/orders/${order.id}` };
+  };
+  const merchantEvidence = (merchantId: string) => {
+    const merchant = merchantById.get(merchantId)!;
+    const store = snapshot.stores.find(item => item.merchantId === merchantId)!;
+    const backlog = backlogs.find(item => item.merchantId === merchantId) ?? calculateMerchantBacklogs(snapshot, DEFAULT_THRESHOLDS).find(item => item.merchantId === merchantId)!;
+    return { recordId: merchant.id, recordType: "merchant" as const, label: `${merchant.name} · ${store.name}`, value: `${backlog.openOrders} open · ${backlog.olderThan48h} older than 48h · change ${backlog.backlogChange >= 0 ? "+" : ""}${backlog.backlogChange}`, href: `/merchants/${merchant.id}` };
+  };
+  const unsupported = (): AskStoreAnswer => ({ ...base, supported: false, heading: "This question is outside the available operations data", answer: "Ask about merchant backlogs, paid and unfulfilled orders, ageing orders, payment blocks, inventory constraints, workload, priorities, or why a specific order was flagged.", evidence: [], recommendation: "Choose a supported operational question or add the required source data.", caveat: "Insufficient information. No unsupported assumption was made." });
+  const noFinding = (heading: string, answer: string): AskStoreAnswer => ({ ...base, supported: true, heading, answer, evidence: [], recommendation: "No action is required from this rule right now." });
+  if (context.intent === "unsupported") return unsupported();
 
-  if (context.intent === "unsupported") return { ...answerBase, supported: false, heading: "Not enough information to answer", answer: "The available records cover orders, fulfilment, customers, inventory, product sales, and refunds. They do not contain the information needed for this question.", evidence: [], recommendation: "Ask about operational priorities, delayed orders, inventory, customer value, recent performance, or refunds." };
-  if (context.intent === "overdue_orders" || context.intent === "why_flagged") {
-    const overdue = byType("overdue_order")
-      .filter(alert => context.intent !== "why_flagged" || context.allowedRecordIds.includes(alert.id))
-      .slice(0, 3);
-    if (!overdue.length) return context.intent === "why_flagged"
-      ? noFinding("No matching overdue order was found", "The available records do not contain an overdue order matching that order number.")
-      : noFinding("No overdue orders were found", "No available order crossed the configured fulfilment threshold.");
-    const lead = overdue[0];
-    return { ...answerBase, supported: true, heading: `${lead.title} is the longest current wait`, answer: `${overdue.length} order${overdue.length === 1 ? " has" : "s have"} crossed the 48-hour fulfilment threshold. ${lead.why}`, evidence: overdue.map(evidenceFromAlert), recommendation: lead.recommendedAction };
+  if (context.intent === "why_flagged") {
+    const number = context.question.match(/#\d+/)?.[0];
+    const order = scoped.find(item => item.name === number);
+    if (!order) return noFinding("No matching order is available in this scope", "The requested order was not found inside the selected merchant or store boundary.");
+    const priority = calculateOrderPriority(snapshot, order, DEFAULT_THRESHOLDS);
+    return { ...base, supported: true, heading: `${merchantById.get(order.merchantId)?.name} · ${order.name} has priority ${priority.score}`, answer: `The rule-based score reflects: ${priority.reasons.join("; ").toLowerCase()}.`, evidence: [orderEvidence(order)], recommendation: priority.recommendedAction };
   }
-  if (context.intent === "low_stock") {
-    const low = byType("low_inventory").slice(0, 4);
-    if (!low.length) return noFinding("No low-stock variants were found", "No available variant crossed the configured inventory floor.");
-    return { ...answerBase, supported: true, heading: `${low.length} variants are below the stock floor`, answer: `${low[0].title} is the most urgent current stock signal. This rule identifies current availability risk; it does not forecast a stockout date.`, evidence: low.map(alert => fromSupportingData(alert.supportingData[0], alert.id)), recommendation: low[0].recommendedAction };
+  if (context.intent === "paid_unfulfilled") {
+    const orders = scoped.filter(order => isOpenOrder(order) && order.financialStatus === "PAID").sort((a,b)=>new Date(a.createdAt).getTime()-new Date(b.createdAt).getTime());
+    if (!orders.length) return noFinding("No paid orders are awaiting fulfilment", "No available order in this scope is both paid and still open.");
+    return { ...base, supported: true, heading: `${orders.length} paid order${orders.length === 1 ? " is" : "s are"} awaiting fulfilment`, answer: `${merchantById.get(orders[0].merchantId)?.name} · ${orders[0].name} is the oldest at ${ageLabel(hoursBetween(snapshot.generatedAt, orders[0].createdAt))}.`, evidence: orders.slice(0,6).map(orderEvidence), recommendation: "Start with the highest-priority paid order, then preserve merchant and store context through picking." };
   }
-  if (context.intent === "excess_inventory" || context.intent === "no_sales") {
-    const excess = byType("excess_inventory").slice(0, 4);
-    const noSales = snapshot.products.flatMap(product => product.variants).filter(variant => variant.unitsSold30d === 0);
-    if (context.intent === "no_sales" && noSales.length) {
-      const visible = noSales.slice(0, 5);
-      return { ...answerBase, supported: true, heading: `${noSales.length} variant${noSales.length === 1 ? " has" : "s have"} inventory but no 30-day sales`, answer: `${visible[0].productTitle} · ${visible[0].title} has ${visible[0].available} units available and no sales in the last 30 days.`, evidence: visible.map(variant => ({ recordId: variant.id, recordType: "variant" as const, label: `${variant.productTitle} · ${variant.title}`, value: `${variant.available} available · 0 sold`, href: `/inventory/${variant.id}` })), recommendation: "Review placement, seasonality, and margin before pausing replenishment or testing a bundle." };
-    }
-    if (!excess.length) return noFinding("No excess-inventory signals were found", "No variant crossed both the availability and low-velocity thresholds.");
-    return { ...answerBase, supported: true, heading: `${excess[0].title} is the clearest excess signal`, answer: excess[0].detected + " " + excess[0].why, evidence: excess.map(evidenceFromAlert), recommendation: excess[0].recommendedAction };
+  if (context.intent === "over_48") {
+    const orders = scoped.filter(order => isOpenOrder(order) && hoursBetween(snapshot.generatedAt, order.createdAt) > DEFAULT_THRESHOLDS.overdueHours).sort((a,b)=>new Date(a.createdAt).getTime()-new Date(b.createdAt).getTime());
+    if (!orders.length) return noFinding("No orders are older than 48 hours", "No open order in the selected scope crossed the 48-hour threshold.");
+    return { ...base, supported: true, heading: `${orders.length} order${orders.length === 1 ? " is" : "s are"} older than 48 hours`, answer: `${merchantById.get(orders[0].merchantId)?.name} · ${orders[0].name} is the oldest available order at ${ageLabel(hoursBetween(snapshot.generatedAt, orders[0].createdAt))}.`, evidence: orders.slice(0,6).map(orderEvidence), recommendation: "Assign owners to paid orders first and document payment or inventory blockers separately." };
   }
-  if (context.intent === "vip_customers") {
-    const customers = highestValueCustomers(snapshot, 3);
-    if (!customers.length) return noFinding("No customer value records were found", "The available snapshot does not contain customer lifetime-value records.");
-    const customerLabel = customers.length === 1 ? "customer" : `${customers.length} customers`;
-    return { ...answerBase, supported: true, heading: `${customers[0].name} has the highest lifetime value`, answer: `The top ${customerLabel} ${customers.length === 1 ? "represents" : "represent"} ${formatMoney(customers.reduce((sum, customer) => sum + customer.lifetimeValue.amount, 0), currency)} in recorded lifetime value across ${customers.reduce((sum, customer) => sum + customer.ordersCount, 0)} orders.`, evidence: customers.map(customer => ({ recordId: customer.id, recordType: "customer" as const, label: customer.name, value: `${formatMoney(customer.lifetimeValue.amount, currency)} · ${customer.ordersCount} orders`, href: `/customers/${customer.id}` })), recommendation: "Review any unresolved order before using lifetime value for a retention outreach decision." };
+  if (context.intent === "blocked_orders") {
+    const orders = scoped.filter(order => isOpenOrder(order) && !["PAID","AUTHORIZED"].includes(order.financialStatus));
+    if (!orders.length) return noFinding("No payment-blocked orders are available", "Every open order in this scope has confirmed payment or authorization.");
+    return { ...base, supported: true, heading: `${orders.length} order${orders.length === 1 ? " is" : "s are"} blocked by payment`, answer: "These orders should not be released to picking until the merchant confirms payment readiness.", evidence: orders.slice(0,6).map(orderEvidence), recommendation: "Review payment status by merchant and keep blocked orders outside the ready-to-pick sequence." };
   }
-  if (context.intent === "priorities") {
-    const top = alerts.slice(0, 3);
-    if (!top.length) return noFinding("No current operational priorities were found", "No available record crossed a configured alert threshold.");
-    return { ...answerBase, supported: true, heading: `Address ${top.length === 1 ? "this issue" : `these ${top.length} issues`} first`, answer: "Priority is based on rule severity, elapsed time, and customer risk—not model judgment.", evidence: top.map(evidenceFromAlert), recommendation: top[0]?.recommendedAction ?? "No action is required from the available alerts." };
-  }
-  if (context.intent === "refunds") {
-    const recent = snapshot.refunds.filter(refund => hoursBetween(snapshot.generatedAt, refund.createdAt) <= 7 * 24);
-    const prior = snapshot.refunds.filter(refund => { const age = hoursBetween(snapshot.generatedAt, refund.createdAt); return age > 7 * 24 && age <= 14 * 24; });
-    const visibleRecent = recent.filter(refund => context.allowedRecordIds.includes(refund.id)).slice(0, 5);
-    return { ...answerBase, supported: true, heading: recent.length > prior.length ? "Refund activity increased in the available window" : "Refund activity did not increase", answer: `${recent.length} refunds worth ${formatMoney(recent.reduce((sum, refund) => sum + refund.amount.amount, 0), currency)} were recorded in the last seven days, compared with ${prior.length} in the preceding seven days.`, evidence: visibleRecent.map(refund => ({ recordId: refund.id, recordType: "refund" as const, label: `${refund.orderName} refund`, value: formatMoney(refund.amount.amount, currency), href: `/orders/${refund.orderId}` })), recommendation: "Review affected orders for shared product or fulfilment patterns before changing policy." };
+  if (context.intent === "inventory_blockers") {
+    const inventoryAlerts = scopedAlerts.filter(alert => alert.issueType === "inventory_constraint");
+    if (!inventoryAlerts.length) return noFinding("No current inventory constraint affects an open order", "No same-store variant has availability below the quantity required by an open order.");
+    return { ...base, supported: true, heading: `${inventoryAlerts.length} order${inventoryAlerts.length === 1 ? " has" : "s have"} an inventory constraint`, answer: inventoryAlerts[0].detected, evidence: inventoryAlerts.slice(0,6).map(alert => ({ recordId: alert.id, recordType: "alert" as const, label: alert.title, value: alert.detected, href: `/issues/${alert.id}` })), recommendation: "Confirm physical stock and merchant allocation before releasing the affected orders." };
   }
   if (context.intent === "delayed_customers") {
-    const risks = byType("customer_risk").slice(0, 5);
-    return { ...answerBase, supported: true, heading: risks.length ? `${risks.length} high-value customer${risks.length === 1 ? " has" : "s have"} a delayed order` : "No high-value customers have delayed orders", answer: risks.length ? risks[0].detected : "No available record crossed both the customer-value and overdue-order thresholds.", evidence: risks.map(evidenceFromAlert), recommendation: risks[0]?.recommendedAction ?? "Continue monitoring current orders." };
+    const risks = scopedAlerts.filter(alert => alert.issueType === "customer_risk");
+    if (!risks.length) return noFinding("No high-value customers have delayed orders in this scope", "No same-store customer crossed both the value and delay thresholds.");
+    return { ...base, supported: true, heading: `${risks.length} delayed high-value customer order${risks.length === 1 ? "" : "s"}`, answer: risks[0].detected, evidence: risks.slice(0,6).map(alert => ({ recordId: alert.id, recordType: "alert" as const, label: alert.title, value: alert.detected, href: `/issues/${alert.id}` })), recommendation: "Prioritize fulfilment review and give the relevant merchant an accurate status." };
   }
-  if (context.intent === "top_products") {
-    const products = topSellingProducts(snapshot, 3).filter(product => product.unitsSold30d > 0);
-    if (!products.length) return noFinding("No product sales were found", "The available snapshot does not contain recorded order-line sales in the 30-day window.");
-    return { ...answerBase, caveat: "Recorded order-line value does not allocate refunds, discounts, or payment-state adjustments at product level.", supported: true, heading: `${products[0].title} leads recorded 30-day order-line value`, answer: `Its order lines total ${formatMoney(products[0].revenue30d, currency)} across ${products[0].unitsSold30d} units in the available 30-day window. This is a gross order-line measure, not net product revenue.`, evidence: products.map(product => ({ recordId: product.id, recordType: "product" as const, label: product.title, value: `${formatMoney(product.revenue30d, currency)} recorded order-line value · ${product.unitsSold30d} units`, href: productEvidenceHref(snapshot, product.id) })), recommendation: "Protect availability on strong sellers while checking margin before changing merchandising." };
+  if (context.intent === "merchant_overdue") {
+    const leader = [...backlogs].sort((a,b)=>b.olderThan48h-a.olderThan48h||b.oldestOrderHours-a.oldestOrderHours)[0];
+    if (!leader || leader.olderThan48h === 0) return noFinding("No merchant has overdue orders", "No open order crossed the 48-hour threshold.");
+    return { ...base, supported: true, heading: `${merchantById.get(leader.merchantId)?.name} has the most overdue orders`, answer: `${leader.olderThan48h} orders are older than 48 hours; the oldest is ${ageLabel(leader.oldestOrderHours)}.`, evidence: [merchantEvidence(leader.merchantId)], recommendation: "Review that merchant’s oldest paid orders and current capacity first." };
   }
-  return { ...answerBase, supported: true, heading: "Seven-day operations snapshot", answer: `${metrics.orders7d} orders totalled ${formatMoney(metrics.revenue7d.amount, currency)} in gross order value. ${metrics.overdueOrders} paid orders are overdue, ${metrics.lowStockVariants} variants are low, and ${metrics.refunds7d} refunds were recorded.`, evidence: alerts.slice(0, 3).map(evidenceFromAlert), recommendation: "Start with the highest-scoring alert, then review the underlying record before action." };
-}
-
-function noFinding(heading: string, answer: string): AskStoreAnswer {
-  return { supported: true, heading, answer, evidence: [], recommendation: "No action is required from this rule right now.", caveat: "Based on available store data.", generatedBy: "deterministic_fallback" };
-}
-
-function productEvidenceHref(snapshot: StoreSnapshot, productId: string) {
-  const product = snapshot.products.find(item => item.id === productId);
-  if (!product?.variants.length) return "/inventory";
-  const revenueByVariant = new Map<string, number>();
-  snapshot.orders
-    .filter(order => hoursBetween(snapshot.generatedAt, order.createdAt) <= 30 * 24)
-    .flatMap(order => order.lineItems)
-    .filter(lineItem => lineItem.productId === productId && lineItem.variantId)
-    .forEach(lineItem => revenueByVariant.set(lineItem.variantId!, (revenueByVariant.get(lineItem.variantId!) ?? 0) + lineItem.total.amount));
-  const leadingVariant = [...product.variants].sort((a, b) => (revenueByVariant.get(b.id) ?? 0) - (revenueByVariant.get(a.id) ?? 0))[0];
-  return `/inventory/${leadingVariant.id}`;
+  if (context.intent === "backlog_change") {
+    const leader = [...backlogs].sort((a,b)=>b.backlogChange-a.backlogChange)[0];
+    if (!leader || leader.backlogChange <= 0) return noFinding("No merchant backlog increased", "The available comparison does not show a positive backlog change.");
+    return { ...base, supported: true, heading: `${merchantById.get(leader.merchantId)?.name} backlog increased the most`, answer: `Open orders increased by ${leader.backlogChange}, from ${leader.openOrders-leader.backlogChange} to ${leader.openOrders}.`, evidence: [merchantEvidence(leader.merchantId)], recommendation: "Review staffing and assign the oldest ready orders before the backlog ages further." };
+  }
+  if (context.intent === "oldest_store") {
+    const leader = [...backlogs].sort((a,b)=>b.oldestOrderHours-a.oldestOrderHours)[0];
+    if (!leader || leader.oldestOrderHours === 0) return noFinding("No open orders are available", "Every store in the selected scope has a clear fulfilment queue.");
+    return { ...base, supported: true, heading: `${storeById.get(leader.storeId)?.name} has the oldest unfulfilled order`, answer: `The oldest open order is ${ageLabel(leader.oldestOrderHours)}.`, evidence: [merchantEvidence(leader.merchantId)], recommendation: "Open the merchant queue and review payment, inventory, and assignment status." };
+  }
+  if (context.intent === "workload_summary") {
+    const visible = backlogs.slice(0,6);
+    return { ...base, supported: true, heading: `${metrics.totalOpenOrders} open orders across ${snapshot.merchants.length} merchants`, answer: `${metrics.paidUnfulfilledOrders} are paid and awaiting fulfilment, ${metrics.olderThan48h} are older than 48 hours, and ${metrics.paymentBlockedOrders} are blocked by payment.`, evidence: visible.map(item => merchantEvidence(item.merchantId)), recommendation: "Use the unified queue to process the highest-priority ready work while separating blocked orders." };
+  }
+  const prioritized = getPrioritizedOrders({ ...snapshot, orders: scoped }, DEFAULT_THRESHOLDS).slice(0,3);
+  if (!prioritized.length) return noFinding("No current fulfilment priorities are available", "The selected scope contains no open orders.");
+  return { ...base, supported: true, heading: `${merchantById.get(prioritized[0].order.merchantId)?.name} · ${prioritized[0].order.name} should be reviewed first`, answer: `Its operational priority is ${prioritized[0].priority.score}/100, based on deterministic order, merchant, payment, age, customer, and inventory facts.`, evidence: prioritized.map(item => orderEvidence(item.order)), recommendation: prioritized[0].priority.recommendedAction };
 }
 
 function evidenceMatches(left: AskStoreAnswer["evidence"][number], right: AskStoreAnswer["evidence"][number]) {
-  return left.recordId === right.recordId
-    && left.recordType === right.recordType
-    && left.label === right.label
-    && left.value === right.value
-    && left.href === right.href;
+  return left.recordId === right.recordId && left.recordType === right.recordType && left.label === right.label && left.value === right.value && left.href === right.href;
 }
 
 export function validateGroundedAnswer(answer: AskStoreAnswer, context: GroundingContext, fallback: AskStoreAnswer) {
   if (answer.generatedBy !== "openai" || answer.supported !== fallback.supported) return false;
-  if (answer.heading !== fallback.heading || answer.answer !== fallback.answer) return false;
-  if (answer.recommendation !== fallback.recommendation || answer.caveat !== fallback.caveat) return false;
-  if (answer.evidence.length !== fallback.evidence.length) return false;
-  if (!answer.evidence.every((item, index) => evidenceMatches(item, fallback.evidence[index]))) return false;
-  if (!answer.supported) return answer.evidence.length === 0;
-  return answer.evidence.every(item => context.allowedRecordIds.includes(item.recordId));
+  if (answer.heading !== fallback.heading || answer.answer !== fallback.answer || answer.recommendation !== fallback.recommendation || answer.caveat !== fallback.caveat) return false;
+  if (answer.evidence.length !== fallback.evidence.length || !answer.evidence.every((item, index) => evidenceMatches(item, fallback.evidence[index]))) return false;
+  return !answer.supported ? answer.evidence.length === 0 : answer.evidence.every(item => context.allowedRecordIds.includes(item.recordId));
 }

@@ -1,0 +1,10 @@
+import { AppShell } from "@/components/app-shell";
+import { PageHeader } from "@/components/page-header";
+import { AlertCard } from "@/components/alert-card";
+import { SourceBanner } from "@/components/source-banner";
+import { getStoreResult } from "@/lib/data/store";
+import { detectAlerts } from "@/lib/domain/alerts";
+import { DEFAULT_THRESHOLDS } from "@/lib/domain/config";
+
+export const dynamic="force-dynamic";
+export default async function ExceptionsPage(){const result=await getStoreResult();const s=result.snapshot;const alerts=detectAlerts(s,DEFAULT_THRESHOLDS);const groups=[{label:"Immediate order exceptions",types:["order_age_48","inventory_constraint","payment_blocked","partial_fulfillment","unusual_status"]},{label:"Merchant capacity",types:["merchant_backlog"]},{label:"Ready work and early warnings",types:["paid_unfulfilled","order_age_24","high_value_order","customer_risk","low_inventory"]}];return <AppShell source={s.source} storeName={s.provider.name} storeCount={s.stores.length} warning={result.liveError}><main className="mx-auto max-w-[1180px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8"><PageHeader eyebrow="Rule-based operational findings" title="Exceptions" description="Every finding names the affected merchant, client store, source record, supporting data, threshold, and recommended review step."/><div className="mt-6"><SourceBanner result={result}/></div>{groups.map(group=>{const items=alerts.filter(alert=>group.types.includes(alert.issueType)).slice(0,12);return <section key={group.label} className="mt-7"><div className="mb-3 flex items-end justify-between"><h2 className="text-[16px] font-bold">{group.label}</h2><span className="text-[9px] text-[#7b857d]">{items.length} visible</span></div><div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{items.length?items.map(alert=><AlertCard key={alert.id} alert={alert}/>):<div className="rounded-[18px] border border-dashed border-[#d6dbd5] bg-[#faf9f5] p-5 text-[10px] text-[#758077] md:col-span-2 xl:col-span-3">No current finding in this category.</div>}</div></section>})}</main></AppShell>}

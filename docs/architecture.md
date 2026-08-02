@@ -1,70 +1,79 @@
 # Architecture
 
-StoreOps Copilot is intentionally a small retrieval-and-decision system. Shopify or demo data remains the source of truth; domain rules create findings; AI is an optional writing layer.
+StoreOps Copilot is a read-only retrieval-and-decision prototype. Shopify or demo records remain the source of truth; domain rules create findings and priority; AI is an optional constrained communication layer.
 
 ```mermaid
 flowchart TD
-  subgraph Sources
-    D["Synthetic demo data"]
-    S["Shopify Admin GraphQL API 2026-07"]
+  subgraph Sources["Server-side sources"]
+    D["Synthetic provider + 8 merchant stores"]
+    C["Per-store connection configuration"]
+    C --> S["Shopify Admin GraphQL 2026-07"]
   end
-  D --> N["Normalized StoreSnapshot"]
+  D --> N["Normalized OperationsSnapshot"]
   S --> N
-  N --> M["Deterministic metrics"]
-  N --> R["Deterministic alert rules"]
-  M --> P["Priority queue"]
+  N --> B["Explicit provider → merchant → store boundaries"]
+  B --> M["Deterministic metrics + merchant backlogs"]
+  B --> R["Deterministic alerts"]
+  M --> P["Rule-based operational priority"]
   R --> P
-  P --> B["Daily brief input"]
-  P --> Q["Typed Ask Store registry"]
-  Q --> C["Relevant record context"]
-  B --> F["Deterministic fallback"]
-  C --> F
-  B --> O["OpenAI Responses API"]
-  C --> O
-  O --> V["Zod + exact claim/evidence validation"]
-  V --> UI["Next.js UI"]
+  P --> Q["Unified order queue + details"]
+  P --> F["Deterministic brief / answer"]
+  P --> T["Typed question intent + scoped retrieval"]
+  T --> A["Record and answer allowlists"]
+  A --> O["OpenAI Responses API (optional)"]
+  O --> V["JSON schema + Zod + exact evidence validation"]
+  V --> UI["Next.js operator workspace"]
   F --> UI
+  Q --> UI
 ```
 
-## Separation of concerns
+## Domain and separation
 
-- `lib/demo`: realistic synthetic source records.
-- `lib/shopify`: server-only GraphQL transport and response normalization.
-- `lib/domain`: types, configurable rules, metrics, priority, formatting, and fallback brief.
-- `lib/grounding`: intent classification, relevant-record retrieval, fallback answers, and evidence validation.
-- `lib/ai`: optional Responses API synthesis with structured output.
-- `app/api`: small server endpoints for the brief, Ask Store, and a demo-only diagnostic snapshot.
-- `components` and `app`: presentation and route composition only.
-- `tests`: business rules, grounding, normalization, date/currency, and credential-free behavior.
+- `FulfilmentProvider` owns the internal operations workspace.
+- `Merchant` belongs to one provider and carries its service-level target.
+- `ShopifyStore` belongs to one merchant and carries domain, currency, timezone, mode, and connection state.
+- Every order, customer, product, variant, alert, recommendation, and task carries both `merchantId` and `storeId`.
+- Customer identity, lifetime value, products, and inventory are never joined across stores.
 
-## Data flow for Ask Store
+This explicit separation is a prototype guardrail, not a substitute for production row-level tenant controls.
+
+## Ask StoreOps sequence
 
 ```mermaid
 sequenceDiagram
-  participant M as Merchant
-  participant A as Ask API
-  participant R as Query registry
-  participant D as Domain functions
+  participant U as Fulfilment operator
+  participant API as Ask API
+  participant R as Typed intent registry
+  participant D as Domain rules
   participant O as OpenAI (optional)
-  M->>A: Operational question
-  A->>R: Classify to allowed intent
-  R->>D: Select records + calculate facts
-  D-->>A: Facts + source-derived answer allowlist
-  A->>O: Minimal structured context + allowed answer
-  O-->>A: Schema-constrained selection
-  A->>A: Validate every sentence, value, link, and record ID
-  A-->>M: Grounded answer or deterministic fallback
+  U->>API: Cross-store or merchant-specific question
+  API->>R: Classify and detect merchant/store scope
+  R->>D: Retrieve same-scope records and calculate facts
+  D-->>API: Exact answer + allowed record IDs
+  API->>O: Minimal facts + exact allowed answer
+  O-->>API: Strict schema response
+  API->>API: Compare every field and citation
+  API-->>U: Validated output or deterministic fallback
 ```
+
+## Code boundaries
+
+- `lib/demo`: simulated multi-store source records.
+- `lib/shopify`: server-only per-store GraphQL transport and normalization.
+- `lib/domain`: types, thresholds, alerts, backlog metrics, priority, and deterministic brief.
+- `lib/grounding`: intent classification, scope detection, retrieval, answer allowlists, and evidence validation.
+- `lib/ai`: optional Responses API calls and exact output validation.
+- `app/api`: read-only brief, Ask StoreOps, and demo diagnostic routes.
+- `app` and `components`: operator workflow presentation.
+- `tests`: domain boundaries, rules, grounding, normalization, and failure behavior.
 
 ## Live integration boundaries
 
-- Custom-app Admin token only; no browser access.
-- `2026-07` is pinned rather than `latest`.
-- Queries request only required fields.
-- Connections paginate with cursors and a documented prototype cap.
-- Top-level GraphQL errors, HTTP failures, optional fields, currency, and throttle metadata are handled.
-- A production adapter should split list and detail queries, add retry/backoff for transient throttling, track coverage completeness, and use Bulk Operations for deep history.
+- One server-side token per installed store; none reaches the browser.
+- API version `2026-07` is pinned.
+- Queries use verified Admin GraphQL fields and read-only scopes.
+- Cursor pagination is capped for the prototype; throttle metadata and top-level errors are handled.
+- Demo fallback is visible if a live connection is incomplete or fails.
+- Production needs OAuth, encrypted credential persistence/rotation, tenant roles, webhook sync, retry/backoff, coverage diagnostics, and Bulk Operations for deep history.
 
-## Why this architecture
-
-It makes the riskiest product behavior—the decision logic—easy to inspect and test. It also creates explicit failure boundaries: missing credentials select demo mode, live failure is visible, invalid model output falls back, and unsupported questions never become improvised database access.
+The architecture keeps the highest-risk behavior inspectable: facts, alerts, and ranking are deterministic; record scope is explicit; invalid or unavailable model output cannot change the operational answer.
