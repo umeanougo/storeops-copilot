@@ -25,4 +25,10 @@ Use a 1440 × 1000 desktop viewport and 390 × 844 mobile viewport. Keep simulat
 - Do not imply adoption, measured improvement, client ownership, or Shopify endorsement.
 - Add descriptive alt text when publishing assets.
 
-Existing images are baseline artifacts and must be refreshed from the validated multi-merchant deployment before portfolio use.
+## Current validated captures
+
+- `overview-multi-merchant.png` — production operations overview at desktop width
+- `unified-order-queue.png` — production actionable queue and complete filter set
+- `mobile-overview-multi-merchant.png` — production responsive overview
+
+Older JPG files are retained only as baseline comparison artifacts and should not be used in the updated portfolio.

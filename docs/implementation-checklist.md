@@ -27,21 +27,21 @@
 - [x] 30-second, 90-second, and three-minute scripts
 - [x] LinkedIn and three-bullet resume copy
 - [x] Dogfooding and security notes
-- [ ] Refresh screenshots from validated multi-merchant deployment
+- [x] Refresh screenshots from validated multi-merchant deployment
 
 ## Quality and release gate
 
-- [ ] Domain and resilience tests pass
-- [ ] Lint passes without warnings
-- [ ] Type check passes
-- [ ] Production build passes
-- [ ] Desktop and mobile preview QA
-- [ ] Keyboard and filter path review
-- [ ] `git diff --check`
-- [ ] Secret scan
-- [ ] Terminology, ownership, and unsupported-claim scan
-- [ ] Preview deployment validated
-- [ ] Existing production URL updated and validated
+- [x] Domain and resilience tests pass
+- [x] Lint passes without warnings
+- [x] Type check passes
+- [x] Production build passes
+- [x] Desktop and mobile browser QA (local build and public production)
+- [x] Keyboard and filter path review
+- [x] `git diff --check`
+- [x] Secret scan
+- [x] Terminology, ownership, and unsupported-claim scan
+- [x] Preview deployment built successfully (anonymous browser review blocked by project protection)
+- [x] Existing production URL updated and validated
 
 ## Credential-dependent verification
 

@@ -41,6 +41,12 @@ Fulfilment provider
 
 The default public experience contains one fictitious fulfilment provider, eight fictitious merchants, eight simulated Shopify stores, 56 orders, and supporting products and anonymized customers. It includes paid/unfulfilled, fulfilled, partial, payment-blocked, 24-hour and 48-hour ageing, high-value delay, increasing backlog, inventory constraints, repeat customers, and one clear/no-risk merchant. All emails use `.test`; no identity or record represents a real party.
 
+| Operations overview | Unified order queue |
+|---|---|
+| ![Multi-merchant fulfilment overview](./docs/screenshots/overview-multi-merchant.png) | ![Unified multi-merchant order queue](./docs/screenshots/unified-order-queue.png) |
+
+![Responsive operations overview](./docs/screenshots/mobile-overview-multi-merchant.png)
+
 ## Alert and priority logic
 
 Alerts are deterministic. The model does not decide whether a rule was crossed.
