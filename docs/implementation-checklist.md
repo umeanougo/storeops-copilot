@@ -26,7 +26,7 @@
 - [x] Dogfooding journal
 - [x] Security and privacy notes
 - [x] Final screenshots
-- [ ] Public deployment
+- [x] Public deployment
 - [x] GitHub repository
 
 ## Phase 3 — optional live Shopify connection

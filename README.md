@@ -2,6 +2,8 @@
 
 **An independently built, AI-assisted Shopify operations portfolio prototype inspired by real workflow discovery.**
 
+**Live demo:** [storeops-copilot.vercel.app](https://storeops-copilot.vercel.app)
+
 StoreOps Copilot helps a merchant or fulfilment lead answer one practical question: **What needs attention today?** It turns orders, inventory, customer, and refund records into transparent operational priorities, explains the rule behind each finding, and recommends a human-reviewed next step.
 
 > This is a portfolio prototype, not a production Shopify app, client deliverable, or Shopify-endorsed product.
@@ -208,7 +210,9 @@ npm run build
 
 ## Deployment
 
-The project is Vercel-compatible and requires no variables for the public demo:
+The public demo is deployed at [storeops-copilot.vercel.app](https://storeops-copilot.vercel.app). It requires no environment variables and runs only against the labelled synthetic dataset.
+
+To create another Vercel deployment:
 
 ```bash
 npx vercel
