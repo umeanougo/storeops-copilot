@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { Customer, FinancialState, FulfillmentState, Merchant, Order, Product, Refund, ShopifyStore, StoreSnapshot } from "@/lib/domain/types";
 
 // Verified against the Shopify Admin GraphQL API 2026-07 schema. Read-only queries only.
@@ -40,6 +41,21 @@ type RawOrder = { id: string; name: string; createdAt: string; updatedAt: string
 type RawProduct = { id: string; title: string; productType?: string; status?: string; variants?: { nodes?: Array<{ id: string; title: string; sku?: string | null; price?: string; inventoryQuantity?: number | null }> } };
 type QueryData = { shop: { name: string; myshopifyDomain: string; currencyCode: string; ianaTimezone?: string | null }; orders: Connection<RawOrder>; customers: Connection<RawCustomer>; products: Connection<RawProduct> };
 type Context = { merchantId: string; storeId: string };
+type ShopifyEntityType = "customer" | "line_item" | "order" | "product" | "refund" | "task" | "variant";
+
+const URL_SAFE_ID = /^[A-Za-z0-9_-]+$/;
+
+export function shopifyInternalId(storeId: string, entityType: ShopifyEntityType, sourceId: string): string {
+  if (!URL_SAFE_ID.test(storeId)) throw new Error(`Shopify store ID must be URL-safe: ${storeId}`);
+  const digest = createHash("sha256")
+    .update(`${storeId}\0${entityType}\0${sourceId}`)
+    .digest("base64url")
+    .slice(0, 24);
+  return `${storeId}_${entityType}_${digest}`;
+}
+
+const preservedShopifyGid = (sourceId: string): string | undefined =>
+  sourceId.startsWith("gid://shopify/") ? sourceId : undefined;
 
 async function graphql<T>(connection: StoreConnection, query: string, variables: Record<string, string | null>): Promise<ShopifyResponse<T>> {
   const response = await fetch(`https://${connection.domain}/admin/api/${connection.apiVersion}/graphql.json`, {
@@ -73,7 +89,20 @@ export const normalizeIanaTimezone = (value?: string | null): string => {
   try { new Intl.DateTimeFormat("en", { timeZone: value }).format(); return value; } catch { return "UTC"; }
 };
 
-function loadConnections(): StoreConnection[] {
+function validateConnectionIds(connections: StoreConnection[]): void {
+  const storeIds = new Set<string>();
+  const merchantIds = new Set<string>();
+  for (const connection of connections) {
+    if (!URL_SAFE_ID.test(connection.id)) throw new Error(`Shopify store ID must be URL-safe: ${connection.id}`);
+    if (!URL_SAFE_ID.test(connection.merchantId)) throw new Error(`Shopify merchant ID must be URL-safe: ${connection.merchantId}`);
+    if (storeIds.has(connection.id)) throw new Error(`Duplicate Shopify store ID: ${connection.id}`);
+    if (merchantIds.has(connection.merchantId)) throw new Error(`Duplicate Shopify merchant ID: ${connection.merchantId}`);
+    storeIds.add(connection.id);
+    merchantIds.add(connection.merchantId);
+  }
+}
+
+export function loadConnections(): StoreConnection[] {
   const version = process.env.SHOPIFY_API_VERSION || "2026-07";
   if (process.env.SHOPIFY_STORES_JSON) {
     const parsed = JSON.parse(process.env.SHOPIFY_STORES_JSON) as Array<Partial<StoreConnection>>;
@@ -81,6 +110,7 @@ function loadConnections(): StoreConnection[] {
       id: item.id!, merchantId: item.merchantId!, merchantName: item.merchantName!, storeName: item.storeName!, domain: item.domain!.replace(/^https?:\/\//, "").replace(/\/$/, ""), token: item.token!, apiVersion: item.apiVersion || version, serviceLevelTargetHours: item.serviceLevelTargetHours || 48,
     }));
     if (!connections.length) throw new Error("No valid Shopify store connections are configured");
+    validateConnectionIds(connections);
     return connections;
   }
   const domain = process.env.SHOPIFY_STORE_DOMAIN?.replace(/^https?:\/\//, "").replace(/\/$/, "");
@@ -131,25 +161,41 @@ export async function fetchShopifySnapshot(): Promise<StoreSnapshot> {
     source: "live", generatedAt, provider: { id: "fp_live", name: process.env.FULFILLMENT_PROVIDER_NAME || "Connected fulfilment provider" },
     merchants: records.map(record => record.merchant), stores: records.map(record => record.store), orders,
     customers: records.flatMap(record => record.customers), products: records.flatMap(record => record.products), refunds: records.flatMap(record => record.refunds),
-    tasks: orders.filter(order => !order.cancelledAt && !order.closed && order.fulfillmentStatus !== "FULFILLED").map(order => ({ id: `task_${order.id}`, merchantId: order.merchantId, storeId: order.storeId, orderId: order.id, taskType: order.financialStatus === "PAID" ? "pick_pack" : "payment_check", status: order.financialStatus === "PAID" ? "open" : "blocked", priority: 0, createdAt: order.createdAt, dueAt: generatedAt })),
+    tasks: buildFulfillmentTasks(orders, generatedAt),
     warnings: records.flatMap(record => record.warnings),
   };
 }
 
+export function buildFulfillmentTasks(orders: Order[], generatedAt: string): StoreSnapshot["tasks"] {
+  return orders
+    .filter(order => !order.cancelledAt && !order.closed && order.fulfillmentStatus !== "FULFILLED")
+    .map(order => ({
+      id: shopifyInternalId(order.storeId, "task", order.shopifyGid ?? order.id),
+      merchantId: order.merchantId,
+      storeId: order.storeId,
+      orderId: order.id,
+      taskType: order.financialStatus === "PAID" ? "pick_pack" : "payment_check",
+      status: order.financialStatus === "PAID" ? "open" : "blocked",
+      priority: 0,
+      createdAt: order.createdAt,
+      dueAt: generatedAt,
+    }));
+}
+
 export function normalizeCustomers(raw: RawCustomer[], fallbackCurrency: string, context: Context = { merchantId: "merchant_test", storeId: "store_test" }): Customer[] {
-  return raw.map(customer => ({ id: customer.id, merchantId: context.merchantId, storeId: context.storeId, name: customer.displayName || "Unknown customer", email: "", ordersCount: Number(customer.numberOfOrders || 0), lifetimeValue: { amount: Number(customer.amountSpent?.amount || 0), currencyCode: customer.amountSpent?.currencyCode || fallbackCurrency }, lastOrderAt: customer.lastOrder?.createdAt || null, tags: customer.tags || [] }));
+  return raw.map(customer => ({ id: shopifyInternalId(context.storeId, "customer", customer.id), shopifyGid: preservedShopifyGid(customer.id), merchantId: context.merchantId, storeId: context.storeId, name: customer.displayName || "Unknown customer", email: "", ordersCount: Number(customer.numberOfOrders || 0), lifetimeValue: { amount: Number(customer.amountSpent?.amount || 0), currencyCode: customer.amountSpent?.currencyCode || fallbackCurrency }, lastOrderAt: customer.lastOrder?.createdAt || null, tags: customer.tags || [] }));
 }
 
 export function normalizeOrders(raw: RawOrder[], fallbackCurrency: string, context: Context = { merchantId: "merchant_test", storeId: "store_test" }): Order[] {
   return raw.map(order => { const amount = order.currentTotalPriceSet?.shopMoney; const fulfillment = order.fulfillments?.[0]; return {
-    id: order.id, merchantId: context.merchantId, storeId: context.storeId, name: order.name, createdAt: order.createdAt, updatedAt: order.updatedAt, customerId: order.customer?.id || null, customerName: order.customer?.displayName || "Guest", total: { amount: Number(amount?.amount || 0), currencyCode: amount?.currencyCode || fallbackCurrency }, cancelledAt: order.cancelledAt || null, closed: Boolean(order.closed), fulfillmentStatus: fulfillmentState(order.displayFulfillmentStatus), financialStatus: financialState(order.displayFinancialStatus), fulfillmentCreatedAt: fulfillment?.createdAt || null, tags: order.tags || [], notes: order.note || "", riskSignals: [], lineItems: (order.lineItems?.nodes || []).map(item => ({ id: item.id, productId: item.product?.id || null, variantId: item.variant?.id || null, title: item.title, variantTitle: item.variantTitle || "Default", quantity: item.quantity, total: { amount: Number(item.originalTotalSet?.shopMoney?.amount || 0), currencyCode: item.originalTotalSet?.shopMoney?.currencyCode || fallbackCurrency } })) };
+    id: shopifyInternalId(context.storeId, "order", order.id), shopifyGid: preservedShopifyGid(order.id), merchantId: context.merchantId, storeId: context.storeId, name: order.name, createdAt: order.createdAt, updatedAt: order.updatedAt, customerId: order.customer?.id ? shopifyInternalId(context.storeId, "customer", order.customer.id) : null, customerName: order.customer?.displayName || "Guest", total: { amount: Number(amount?.amount || 0), currencyCode: amount?.currencyCode || fallbackCurrency }, cancelledAt: order.cancelledAt || null, closed: Boolean(order.closed), fulfillmentStatus: fulfillmentState(order.displayFulfillmentStatus), financialStatus: financialState(order.displayFinancialStatus), fulfillmentCreatedAt: fulfillment?.createdAt || null, tags: order.tags || [], notes: order.note || "", riskSignals: [], lineItems: (order.lineItems?.nodes || []).map(item => ({ id: shopifyInternalId(context.storeId, "line_item", item.id), shopifyGid: preservedShopifyGid(item.id), productId: item.product?.id ? shopifyInternalId(context.storeId, "product", item.product.id) : null, variantId: item.variant?.id ? shopifyInternalId(context.storeId, "variant", item.variant.id) : null, title: item.title, variantTitle: item.variantTitle || "Default", quantity: item.quantity, total: { amount: Number(item.originalTotalSet?.shopMoney?.amount || 0), currencyCode: item.originalTotalSet?.shopMoney?.currencyCode || fallbackCurrency } })) };
   });
 }
 
 export function normalizeProducts(raw: RawProduct[], fallbackCurrency: string, sales = new Map<string, { units7: number; units30: number; lastSoldAt: string | null }>(), context: Context = { merchantId: "merchant_test", storeId: "store_test" }): Product[] {
-  return raw.map(product => ({ id: product.id, merchantId: context.merchantId, storeId: context.storeId, title: product.title, productType: product.productType || "", status: product.status === "DRAFT" ? "DRAFT" : product.status === "ARCHIVED" ? "ARCHIVED" : "ACTIVE", variants: (product.variants?.nodes || []).map(variant => { const activity = sales.get(variant.id); return { id: variant.id, merchantId: context.merchantId, storeId: context.storeId, productId: product.id, productTitle: product.title, title: variant.title, sku: variant.sku || "No SKU", available: variant.inventoryQuantity ?? null, price: { amount: Number(variant.price || 0), currencyCode: fallbackCurrency }, unitsSold7d: activity?.units7 || 0, unitsSold30d: activity?.units30 || 0, lastSoldAt: activity?.lastSoldAt || null }; }) }));
+  return raw.map(product => { const productId = shopifyInternalId(context.storeId, "product", product.id); return { id: productId, shopifyGid: preservedShopifyGid(product.id), merchantId: context.merchantId, storeId: context.storeId, title: product.title, productType: product.productType || "", status: product.status === "DRAFT" ? "DRAFT" : product.status === "ARCHIVED" ? "ARCHIVED" : "ACTIVE", variants: (product.variants?.nodes || []).map(variant => { const variantId = shopifyInternalId(context.storeId, "variant", variant.id); const activity = sales.get(variantId); return { id: variantId, shopifyGid: preservedShopifyGid(variant.id), merchantId: context.merchantId, storeId: context.storeId, productId, productTitle: product.title, title: variant.title, sku: variant.sku || "No SKU", available: variant.inventoryQuantity ?? null, price: { amount: Number(variant.price || 0), currencyCode: fallbackCurrency }, unitsSold7d: activity?.units7 || 0, unitsSold30d: activity?.units30 || 0, lastSoldAt: activity?.lastSoldAt || null }; }) }; });
 }
 
 export function normalizeRefunds(raw: RawOrder[], fallbackCurrency: string, context: Context = { merchantId: "merchant_test", storeId: "store_test" }): Refund[] {
-  return raw.flatMap(order => (order.refunds || []).map(refund => ({ id: refund.id, merchantId: context.merchantId, storeId: context.storeId, orderId: order.id, orderName: order.name, createdAt: refund.createdAt, amount: { amount: Number(refund.totalRefundedSet?.shopMoney?.amount || 0), currencyCode: refund.totalRefundedSet?.shopMoney?.currencyCode || fallbackCurrency }, reason: "Reason not provided by query" })));
+  return raw.flatMap(order => (order.refunds || []).map(refund => ({ id: shopifyInternalId(context.storeId, "refund", refund.id), shopifyGid: preservedShopifyGid(refund.id), merchantId: context.merchantId, storeId: context.storeId, orderId: shopifyInternalId(context.storeId, "order", order.id), orderName: order.name, createdAt: refund.createdAt, amount: { amount: Number(refund.totalRefundedSet?.shopMoney?.amount || 0), currencyCode: refund.totalRefundedSet?.shopMoney?.currencyCode || fallbackCurrency }, reason: "Reason not provided by query" })));
 }

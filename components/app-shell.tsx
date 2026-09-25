@@ -44,6 +44,10 @@ export function AppShell({ children, source, storeName, storeCount, warning }: {
         </nav>
       </header>
       <div id="main-content">{children}</div>
+      <footer className="flex flex-col gap-1 border-t border-[var(--line)] px-5 py-5 text-[11px] text-[var(--muted)] sm:flex-row sm:items-center sm:justify-between sm:px-8">
+        <span>Independent portfolio prototype by Ugo Umeano.</span>
+        <a className="font-semibold text-[var(--green)] hover:underline" href="https://github.com/umeanougo/storeops-copilot" target="_blank" rel="noreferrer">View source on GitHub</a>
+      </footer>
     </div>
   </div>;
 }

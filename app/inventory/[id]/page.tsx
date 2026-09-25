@@ -8,6 +8,7 @@ import { getStoreResult } from "@/lib/data/store";
 import { detectAlerts } from "@/lib/domain/alerts";
 import { DEFAULT_THRESHOLDS } from "@/lib/domain/config";
 import { formatMoney } from "@/lib/domain/format";
+import { getOpenOrdersForVariant } from "@/lib/domain/metrics";
 
 export const dynamic = "force-dynamic";
 
@@ -25,12 +26,11 @@ export default async function VariantPage({ params }: { params: Promise<{ id: st
   const alerts = detectAlerts(snapshot, DEFAULT_THRESHOLDS).filter((alert) =>
     alert.supportingData.some((item) => item.recordId === id),
   );
-  const affectedOrders = snapshot.orders.filter(
-    (order) =>
-      order.merchantId === variant.merchantId &&
-      order.storeId === variant.storeId &&
-      order.fulfillmentStatus !== "FULFILLED" &&
-      order.lineItems.some((item) => item.variantId === id),
+  const affectedOrders = getOpenOrdersForVariant(
+    snapshot,
+    variant.merchantId,
+    variant.storeId,
+    id,
   );
   const availability =
     variant.available == null ? "Unavailable from Shopify" : `${variant.available} units`;

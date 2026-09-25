@@ -4,6 +4,8 @@
 
 **Live demo:** [storeops-copilot.vercel.app](https://storeops-copilot.vercel.app)
 
+[![Quality](https://github.com/umeanougo/storeops-copilot/actions/workflows/quality.yml/badge.svg?branch=main)](https://github.com/umeanougo/storeops-copilot/actions/workflows/quality.yml)
+
 StoreOps Copilot brings open orders, payment blocks, ageing, inventory shortfalls, and merchant backlogs from multiple client stores into one queue. Rule-based ranking explains what to review first; source-linked Q&A shows the records behind each answer.
 
 > Independent portfolio prototype. Synthetic data, read-only, no client deployment or measured impact.
@@ -105,10 +107,12 @@ See [the detailed architecture](./docs/architecture.md).
 
 ## Run locally
 
+Use Node.js 22 or newer. The repository pins CI to Node.js 22 in `.node-version`.
+
 ```bash
 git clone https://github.com/umeanougo/storeops-copilot.git
 cd storeops-copilot
-npm install
+npm ci
 npm run dev
 ```
 
@@ -126,7 +130,7 @@ No credentials are required. Missing live credentials or a failed live request p
 
 ## Optional local Shopify connection
 
-The prototype supports one development store through `SHOPIFY_STORE_DOMAIN` and `SHOPIFY_ADMIN_ACCESS_TOKEN`, or multiple server-side connections through `SHOPIFY_STORES_JSON`. Each configured connection includes internal merchant/store IDs, names, domain, token, API version, and connection state. Tokens never enter browser code. Live mode is deliberately disabled in production builds because this portfolio prototype has no operator authentication; the public deployment always falls back to synthetic data.
+The prototype supports one development store through `SHOPIFY_STORE_DOMAIN` and `SHOPIFY_ADMIN_ACCESS_TOKEN`, or multiple server-side connections through `SHOPIFY_STORES_JSON`. Each configured connection includes internal merchant/store IDs, names, domain, token, API version, and connection state. Internal IDs must be URL-safe and unique; the current prototype deliberately supports one configured store per merchant rather than pretending its backlog model handles multi-store merchants. Shopify GIDs are retained for source traceability and mapped to store-scoped, URL-safe internal IDs before they reach application routes. Tokens never enter browser code. Live mode is deliberately disabled in production builds because this portfolio prototype has no operator authentication; the public deployment always falls back to synthetic data.
 
 Required read scopes are `read_orders`, `read_customers`, `read_products`, and `read_inventory`; add `read_all_orders` only when approved access beyond Shopify’s default order-history window is required. This portfolio integration uses a development/custom-app token path, not production public-app OAuth.
 
@@ -178,7 +182,11 @@ Future validation would measure time to identify awaiting work, account switches
 
 ## Quality checks
 
+Every pull request and push to `main` runs the same locked-dependency quality gate on Node.js 22. The protected default branch requires an up-to-date passing gate, blocks direct changes, force pushes, and deletion, and resolves changes through a pull request. Dependabot monitors npm and GitHub Actions dependencies weekly.
+
 ```bash
+npm ci
+npm audit --audit-level=high
 npm test
 npm run lint
 npm run typecheck

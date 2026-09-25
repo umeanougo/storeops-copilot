@@ -18,7 +18,17 @@ export type DailyBrief = {
 export function createFallbackBrief(snapshot: StoreSnapshot, alerts: OperationalAlert[], metrics: OperationsMetrics): DailyBrief {
   const merchantById = new Map(snapshot.merchants.map(merchant => [merchant.id, merchant]));
   const storeById = new Map(snapshot.stores.map(store => [store.id, store]));
-  const top = alerts.filter(alert => ["inventory_constraint", "order_age_48", "payment_blocked", "partial_fulfillment", "merchant_backlog"].includes(alert.issueType)).slice(0, 3);
+  const seenWorkItems = new Set<string>();
+  const top = [...alerts]
+    .filter(alert => ["inventory_constraint", "order_age_48", "payment_blocked", "partial_fulfillment", "merchant_backlog"].includes(alert.issueType))
+    .sort((a, b) => b.priorityScore - a.priorityScore || a.title.localeCompare(b.title))
+    .filter(alert => {
+      const workItemKey = `${alert.recordType}:${alert.recordId}`;
+      if (seenWorkItems.has(workItemKey)) return false;
+      seenWorkItems.add(workItemKey);
+      return true;
+    })
+    .slice(0, 3);
   const backlogs = calculateMerchantBacklogs(snapshot, DEFAULT_THRESHOLDS).slice(0, 4);
   const largestIncrease = [...backlogs].sort((a, b) => b.backlogChange - a.backlogChange)[0];
   return {

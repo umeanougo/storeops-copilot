@@ -42,6 +42,9 @@
 - [x] Terminology, ownership, and unsupported-claim scan
 - [x] Preview deployment built successfully (anonymous browser review blocked by project protection)
 - [x] Existing production URL updated and validated
+- [x] GitHub Actions runs the locked dependency audit, tests, lint, type check, and production build
+- [x] Protected `main` requires a pull request and passing quality gate; force pushes and deletion are blocked
+- [x] Dependabot alerts, security updates, secret scanning, and push protection are enabled
 
 ## Credential-dependent verification
 

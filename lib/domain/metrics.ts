@@ -76,6 +76,15 @@ export function getPrioritizedOrders(snapshot: StoreSnapshot, thresholds: AlertT
     .sort((a, b) => b.priority.score - a.priority.score || new Date(a.order.createdAt).getTime() - new Date(b.order.createdAt).getTime());
 }
 
+export function getOpenOrdersForVariant(snapshot: StoreSnapshot, merchantId: string, storeId: string, variantId: string) {
+  return snapshot.orders.filter(order =>
+    order.merchantId === merchantId
+    && order.storeId === storeId
+    && isOpenOrder(order)
+    && order.lineItems.some(item => item.variantId === variantId)
+  );
+}
+
 export function calculateMetrics(snapshot: StoreSnapshot, thresholds: AlertThresholds): OperationsMetrics {
   const open = snapshot.orders.filter(isOpenOrder);
   const ages = open.map(order => hoursBetween(snapshot.generatedAt, order.createdAt));
