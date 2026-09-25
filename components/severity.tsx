@@ -6,5 +6,5 @@ const icons = { critical: AlertCircle, high: AlertTriangle, medium: CircleAlert,
 
 export function SeverityBadge({ severity }: { severity: Severity }) {
   const Icon = icons[severity];
-  return <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[9px] font-bold uppercase tracking-[.08em] ${styles[severity]}`}><Icon size={11}/>{severity}</span>;
+  return <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-[.08em] ${styles[severity]}`}><Icon size={12}/>{severity}</span>;
 }

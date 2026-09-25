@@ -7,6 +7,11 @@ export type StoreResult = { snapshot: StoreSnapshot; requestedMode: "demo" | "li
 export async function getStoreResult(): Promise<StoreResult> {
   const requestedMode = process.env.STOREOPS_DATA_MODE === "live" ? "live" : "demo";
   if (requestedMode === "demo") return { snapshot: createDemoSnapshot(), requestedMode, liveError: null };
+  if (process.env.NODE_ENV === "production") {
+    const snapshot = createDemoSnapshot();
+    snapshot.warnings.push("Live Shopify mode is disabled in the public production build. Demo data is shown instead.");
+    return { snapshot, requestedMode, liveError: "Live mode requires a protected, non-production environment" };
+  }
   const hasSingleStore = Boolean(process.env.SHOPIFY_STORE_DOMAIN && process.env.SHOPIFY_ADMIN_ACCESS_TOKEN);
   const hasMultipleStores = Boolean(process.env.SHOPIFY_STORES_JSON);
   if (!hasSingleStore && !hasMultipleStores) {

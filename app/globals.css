@@ -1,12 +1,12 @@
 @import "tailwindcss";
 
 :root {
-  --canvas: #f4f3ee;
-  --panel: #fffefa;
-  --ink: #1e2621;
-  --muted: #68736c;
-  --line: #dde1da;
-  --green: #244f40;
+  --canvas: #f5f6f2;
+  --panel: #ffffff;
+  --ink: #17211b;
+  --muted: #667169;
+  --line: #e0e4de;
+  --green: #234d3d;
   --green-soft: #e6eee8;
   --orange: #c95a36;
   --orange-soft: #fff0e8;
@@ -22,11 +22,18 @@ body {
   background: var(--canvas);
   font-family: var(--font-sans), Arial, sans-serif;
 }
-button, a, input { -webkit-tap-highlight-color: transparent; }
+button, a, input, select { -webkit-tap-highlight-color: transparent; }
 button { cursor: pointer; }
-:focus-visible { outline: 3px solid rgba(201, 90, 54, .35); outline-offset: 2px; }
-.panel-shadow { box-shadow: 0 14px 45px rgba(27, 46, 35, .06); }
+:focus-visible { outline: 3px solid #b64d2f; outline-offset: 3px; }
+.panel-shadow { box-shadow: 0 12px 36px rgba(27, 46, 35, .055); }
 .small-caps { letter-spacing: .13em; text-transform: uppercase; }
+.scrollbar-none { scrollbar-width: none; }
+.scrollbar-none::-webkit-scrollbar { display: none; }
+.filter-label { display: block; margin-bottom: .375rem; color: #68736b; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.filter-control { min-height: 44px; width: 100%; border: 1px solid var(--line); border-radius: .75rem; background: white; padding: .65rem .75rem; color: #29352e; font-size: 14px; outline: none; }
+.filter-control:focus { border-color: #65816f; box-shadow: 0 0 0 3px rgba(35, 77, 61, .09); }
+input.filter-control { padding-left: 2.25rem; }
+@media (max-width: 767px) { .filter-control { font-size: 16px; } }
 
 @keyframes enter {
   from { opacity: 0; transform: translateY(8px); }

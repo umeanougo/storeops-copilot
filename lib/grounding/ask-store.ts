@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { OperationalAlert, OperationsMetrics, Order, StoreSnapshot } from "@/lib/domain/types";
 import { ageLabel, hoursBetween } from "@/lib/domain/format";
-import { calculateMerchantBacklogs, calculateOrderPriority, getPrioritizedOrders, isOpenOrder } from "@/lib/domain/metrics";
+import { calculateMerchantBacklogs, calculateMetrics, calculateOrderPriority, getPrioritizedOrders, isOpenOrder } from "@/lib/domain/metrics";
 import { DEFAULT_THRESHOLDS } from "@/lib/domain/config";
 
 export const evidenceSchema = z.object({
@@ -61,21 +61,59 @@ function scopedOrders(snapshot: StoreSnapshot, scope: GroundingContext["scope"])
   return snapshot.orders.filter(order => (!scope.merchantId || order.merchantId === scope.merchantId) && (!scope.storeId || order.storeId === scope.storeId));
 }
 
+function scopedSnapshot(snapshot: StoreSnapshot, scope: GroundingContext["scope"]): StoreSnapshot {
+  const inScope = (record: { merchantId: string; storeId: string }) => (!scope.merchantId || record.merchantId === scope.merchantId) && (!scope.storeId || record.storeId === scope.storeId);
+  return {
+    ...snapshot,
+    merchants: snapshot.merchants.filter(merchant => !scope.merchantId || merchant.id === scope.merchantId),
+    stores: snapshot.stores.filter(store => (!scope.merchantId || store.merchantId === scope.merchantId) && (!scope.storeId || store.id === scope.storeId)),
+    orders: scopedOrders(snapshot, scope),
+    customers: snapshot.customers.filter(inScope),
+    products: snapshot.products.filter(inScope),
+    refunds: snapshot.refunds.filter(inScope),
+    tasks: snapshot.tasks.filter(inScope),
+  };
+}
+
 export function buildGroundingContext(question: string, snapshot: StoreSnapshot, alerts: OperationalAlert[], metrics: OperationsMetrics): GroundingContext {
   const intent = classifyIntent(question);
   const scope = detectScope(question, snapshot);
-  const orders = scopedOrders(snapshot, scope);
+  const selectedSnapshot = scopedSnapshot(snapshot, scope);
+  const orders = selectedSnapshot.orders;
   const scopedAlerts = alerts.filter(alert => (!scope.merchantId || alert.merchantId === scope.merchantId) && (!scope.storeId || alert.storeId === scope.storeId));
   const referencedOrder = question.match(/#\d+/)?.[0];
+  const orderFacts = orders.slice(0, 20).map(order => ({
+    id: order.id,
+    merchantId: order.merchantId,
+    storeId: order.storeId,
+    name: order.name,
+    createdAt: order.createdAt,
+    total: order.total,
+    financialStatus: order.financialStatus,
+    fulfillmentStatus: order.fulfillmentStatus,
+    customerId: order.customerId,
+    lineItems: order.lineItems.map(item => ({ productId: item.productId, variantId: item.variantId, quantity: item.quantity })),
+  }));
+  const alertFacts = scopedAlerts.slice(0, 20).map(alert => ({
+    id: alert.id,
+    merchantId: alert.merchantId,
+    storeId: alert.storeId,
+    issueType: alert.issueType,
+    severity: alert.severity,
+    recordType: alert.recordType,
+    recordId: alert.recordId,
+    detected: alert.detected,
+    threshold: alert.threshold,
+  }));
   const facts = {
-    metrics,
+    metrics: scope.merchantId || scope.storeId ? calculateMetrics(selectedSnapshot, DEFAULT_THRESHOLDS) : metrics,
     scope,
-    merchantCount: snapshot.merchants.length,
-    storeCount: snapshot.stores.length,
-    orders: orders.slice(0, 20),
-    alerts: scopedAlerts.slice(0, 20),
+    merchantCount: selectedSnapshot.merchants.length,
+    storeCount: selectedSnapshot.stores.length,
+    orders: orderFacts,
+    alerts: alertFacts,
     referencedOrder,
-    backlogs: calculateMerchantBacklogs(snapshot, DEFAULT_THRESHOLDS),
+    backlogs: calculateMerchantBacklogs(selectedSnapshot, DEFAULT_THRESHOLDS),
   };
   const allowedRecordIds = new Set<string>();
   for (const merchant of snapshot.merchants) if (!scope.merchantId || merchant.id === scope.merchantId) allowedRecordIds.add(merchant.id);
@@ -88,10 +126,12 @@ export function buildGroundingContext(question: string, snapshot: StoreSnapshot,
 export function createFallbackAnswer(context: GroundingContext, snapshot: StoreSnapshot, alerts: OperationalAlert[], metrics: OperationsMetrics): AskStoreAnswer {
   const merchantById = new Map(snapshot.merchants.map(merchant => [merchant.id, merchant]));
   const storeById = new Map(snapshot.stores.map(store => [store.id, store]));
-  const scoped = scopedOrders(snapshot, context.scope);
+  const selectedSnapshot = scopedSnapshot(snapshot, context.scope);
+  const scoped = selectedSnapshot.orders;
+  const selectedMetrics = context.scope.merchantId || context.scope.storeId ? calculateMetrics(selectedSnapshot, DEFAULT_THRESHOLDS) : metrics;
   const scopedAlerts = alerts.filter(alert => (!context.scope.merchantId || alert.merchantId === context.scope.merchantId) && (!context.scope.storeId || alert.storeId === context.scope.storeId));
-  const backlogs = calculateMerchantBacklogs(snapshot, DEFAULT_THRESHOLDS).filter(item => !context.scope.merchantId || item.merchantId === context.scope.merchantId);
-  const base = { caveat: "Based only on available simulated store data. Facts and recommendations are separated, and no Shopify action was performed.", generatedBy: "deterministic_fallback" as const };
+  const backlogs = calculateMerchantBacklogs(selectedSnapshot, DEFAULT_THRESHOLDS);
+  const base = { caveat: `Based only on available ${snapshot.source === "demo" ? "simulated" : "live"} store data. Facts and recommendations are separated, and no Shopify action was performed.`, generatedBy: "deterministic_fallback" as const };
   const orderEvidence = (order: Order) => {
     const merchant = merchantById.get(order.merchantId)!;
     const store = storeById.get(order.storeId)!;
@@ -101,7 +141,8 @@ export function createFallbackAnswer(context: GroundingContext, snapshot: StoreS
     const merchant = merchantById.get(merchantId)!;
     const store = snapshot.stores.find(item => item.merchantId === merchantId)!;
     const backlog = backlogs.find(item => item.merchantId === merchantId) ?? calculateMerchantBacklogs(snapshot, DEFAULT_THRESHOLDS).find(item => item.merchantId === merchantId)!;
-    return { recordId: merchant.id, recordType: "merchant" as const, label: `${merchant.name} · ${store.name}`, value: `${backlog.openOrders} open · ${backlog.olderThan48h} older than 48h · change ${backlog.backlogChange >= 0 ? "+" : ""}${backlog.backlogChange}`, href: `/merchants/${merchant.id}` };
+    const trend = snapshot.source === "demo" ? ` · ${backlog.backlogChange >= 0 ? "+" : ""}${backlog.backlogChange} vs demo baseline` : " · trend unavailable";
+    return { recordId: merchant.id, recordType: "merchant" as const, label: `${merchant.name} · ${store.name}`, value: `${backlog.openOrders} open · ${backlog.olderThan48h} older than 48h${trend}`, href: `/merchants/${merchant.id}` };
   };
   const unsupported = (): AskStoreAnswer => ({ ...base, supported: false, heading: "This question is outside the available operations data", answer: "Ask about merchant backlogs, paid and unfulfilled orders, ageing orders, payment blocks, inventory constraints, workload, priorities, or why a specific order was flagged.", evidence: [], recommendation: "Choose a supported operational question or add the required source data.", caveat: "Insufficient information. No unsupported assumption was made." });
   const noFinding = (heading: string, answer: string): AskStoreAnswer => ({ ...base, supported: true, heading, answer, evidence: [], recommendation: "No action is required from this rule right now." });
@@ -142,12 +183,13 @@ export function createFallbackAnswer(context: GroundingContext, snapshot: StoreS
   if (context.intent === "merchant_overdue") {
     const leader = [...backlogs].sort((a,b)=>b.olderThan48h-a.olderThan48h||b.oldestOrderHours-a.oldestOrderHours)[0];
     if (!leader || leader.olderThan48h === 0) return noFinding("No merchant has overdue orders", "No open order crossed the 48-hour threshold.");
-    return { ...base, supported: true, heading: `${merchantById.get(leader.merchantId)?.name} has the most overdue orders`, answer: `${leader.olderThan48h} orders are older than 48 hours; the oldest is ${ageLabel(leader.oldestOrderHours)}.`, evidence: [merchantEvidence(leader.merchantId)], recommendation: "Review that merchant’s oldest paid orders and current capacity first." };
+    return { ...base, supported: true, heading: `${merchantById.get(leader.merchantId)?.name} has the most overdue orders`, answer: `${leader.olderThan48h} orders are older than 48 hours; the oldest is ${ageLabel(leader.oldestOrderHours)}.`, evidence: [merchantEvidence(leader.merchantId)], recommendation: "Review that merchant’s oldest paid orders and assign an owner first." };
   }
   if (context.intent === "backlog_change") {
+    if (snapshot.source === "live") return { ...base, supported: false, heading: "Backlog trend is unavailable", answer: "The live connection provides a current snapshot but no stored prior-period backlog.", evidence: [], recommendation: "Store dated snapshots before comparing backlog changes.", caveat: "Insufficient historical information. No trend was inferred from a single snapshot." };
     const leader = [...backlogs].sort((a,b)=>b.backlogChange-a.backlogChange)[0];
-    if (!leader || leader.backlogChange <= 0) return noFinding("No merchant backlog increased", "The available comparison does not show a positive backlog change.");
-    return { ...base, supported: true, heading: `${merchantById.get(leader.merchantId)?.name} backlog increased the most`, answer: `Open orders increased by ${leader.backlogChange}, from ${leader.openOrders-leader.backlogChange} to ${leader.openOrders}.`, evidence: [merchantEvidence(leader.merchantId)], recommendation: "Review staffing and assign the oldest ready orders before the backlog ages further." };
+    if (!leader || leader.backlogChange <= 0) return noFinding("No merchant backlog increased", "The demo baseline does not show a positive backlog change.");
+    return { ...base, supported: true, heading: `${merchantById.get(leader.merchantId)?.name} backlog increased the most`, answer: `Open orders are ${leader.backlogChange} above the demo baseline, moving from ${leader.openOrders-leader.backlogChange} to ${leader.openOrders}.`, evidence: [merchantEvidence(leader.merchantId)], recommendation: "Assign an owner to the oldest paid orders before the backlog ages further." };
   }
   if (context.intent === "oldest_store") {
     const leader = [...backlogs].sort((a,b)=>b.oldestOrderHours-a.oldestOrderHours)[0];
@@ -156,9 +198,10 @@ export function createFallbackAnswer(context: GroundingContext, snapshot: StoreS
   }
   if (context.intent === "workload_summary") {
     const visible = backlogs.slice(0,6);
-    return { ...base, supported: true, heading: `${metrics.totalOpenOrders} open orders across ${snapshot.merchants.length} merchants`, answer: `${metrics.paidUnfulfilledOrders} are paid and awaiting fulfilment, ${metrics.olderThan48h} are older than 48 hours, and ${metrics.paymentBlockedOrders} are blocked by payment.`, evidence: visible.map(item => merchantEvidence(item.merchantId)), recommendation: "Use the unified queue to process the highest-priority ready work while separating blocked orders." };
+    const scopeLabel = selectedSnapshot.merchants.length === 1 ? selectedSnapshot.merchants[0].name : `${selectedSnapshot.merchants.length} merchants`;
+    return { ...base, supported: true, heading: `${selectedMetrics.totalOpenOrders} open orders across ${scopeLabel}`, answer: `${selectedMetrics.paidUnfulfilledOrders} are paid and still open, ${selectedMetrics.olderThan48h} are older than 48 hours, and ${selectedMetrics.paymentBlockedOrders} are blocked by payment.`, evidence: visible.map(item => merchantEvidence(item.merchantId)), recommendation: "Use the unified queue to review the highest-priority paid orders while keeping blocked work separate." };
   }
-  const prioritized = getPrioritizedOrders({ ...snapshot, orders: scoped }, DEFAULT_THRESHOLDS).slice(0,3);
+  const prioritized = getPrioritizedOrders(selectedSnapshot, DEFAULT_THRESHOLDS).slice(0,3);
   if (!prioritized.length) return noFinding("No current fulfilment priorities are available", "The selected scope contains no open orders.");
   return { ...base, supported: true, heading: `${merchantById.get(prioritized[0].order.merchantId)?.name} · ${prioritized[0].order.name} should be reviewed first`, answer: `Its operational priority is ${prioritized[0].priority.score}/100, based on deterministic order, merchant, payment, age, customer, and inventory facts.`, evidence: prioritized.map(item => orderEvidence(item.order)), recommendation: prioritized[0].priority.recommendedAction };
 }

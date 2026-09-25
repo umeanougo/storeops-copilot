@@ -21,6 +21,11 @@ describe("Shopify response normalization", () => {
     expect(orders[1].financialStatus).toBe("UNKNOWN");
   });
 
+  it("preserves closed and cancelled order state", () => {
+    const orders = normalizeOrders([{ id:"o1", name:"#1", createdAt:"2026-08-01T00:00:00Z", updatedAt:"2026-08-01T00:00:00Z", cancelledAt:"2026-08-02T00:00:00Z", closed:true }], "CAD");
+    expect(orders[0]).toMatchObject({ cancelledAt:"2026-08-02T00:00:00Z", closed:true });
+  });
+
   it("uses only valid IANA timezones", () => {
     expect(normalizeIanaTimezone("America/Toronto")).toBe("America/Toronto");
     expect(normalizeIanaTimezone("EST")).toBe("EST");
@@ -38,7 +43,7 @@ describe("Shopify response normalization", () => {
   it("normalizes money and inventory values", () => {
     const products = normalizeProducts([{ id:"p1", title:"Test", status:"ACTIVE", variants:{nodes:[{id:"v1",title:"Default",price:"19.95",inventoryQuantity:null}]}}], "CAD");
     expect(products[0].variants[0].price.amount).toBe(19.95);
-    expect(products[0].variants[0].available).toBe(0);
+    expect(products[0].variants[0].available).toBeNull();
   });
 
   it("retains refund currency and order relationship", () => {

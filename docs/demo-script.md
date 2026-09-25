@@ -1,57 +1,82 @@
-# Demo scripts
+# Recruiter demo script
 
-## 90-second walkthrough
+Target length: 4 minutes. The point is to show product judgment, not every feature.
 
-**0:00–0:15 — Discovery and user**
+## Before the call
 
-“I observed a third-party fulfilment team repeatedly switching between merchant-owned Shopify accounts to find and process work. I independently built StoreOps Copilot to explore a unified, explainable workflow.”
+- Start on the overview with the demo source label visible.
+- Reset the order queue so no filters carry over.
+- Keep the case study and methodology pages open in separate tabs.
+- Use the synthetic demo data. Do not imply that the prototype is deployed with a client.
 
-**0:15–0:35 — Operations overview**
+## 0:00–0:35 — Frame the problem
 
-Open the overview. Point to the simulated-data label, cross-merchant workload, ageing metrics, and operations brief. Explain that approximately eight accounts and 24 recurring checks describe discovery context, not prototype adoption.
+**Show:** Overview, titled “What needs attention today.”
 
-**0:35–0:58 — Unified queue**
+**Say:**
 
-Open Unified Order Queue. Show the actionable-first default, merchant/store identity on every row, then filter to one merchant and sort oldest first. Point out payment, fulfilment, priority, exception, and recommended action.
+“I observed a third-party fulfilment operator repeatedly switch between merchant-owned Shopify accounts to find and process work. The operation managed approximately eight accounts and performed approximately 24 recurring checks per day. I mapped that workflow and independently built StoreOps Copilot to test one question: can a team prioritize cross-store work without losing merchant context?
 
-**0:58–1:15 — Explainability**
+This public prototype uses synthetic data, is read-only, and has not produced a measured customer outcome.”
 
-Open the highest-priority order. Show line-item inventory, service target, current exceptions, the rule-based score, why it was flagged, and the read-only recommendation.
+## 0:35–1:10 — Show the operating view
 
-**1:15–1:27 — Ask StoreOps**
+**Show:** The four headline metrics, “Start here,” “Where work is building,” and inventory blockers.
 
-Ask “Which merchant has the most overdue orders?” Open a cited merchant record. Explain that metrics are calculated before the model and invalid output falls back.
+**Say:**
 
-**1:27–1:30 — Close**
+“The overview is deliberately an operations brief, not a general analytics dashboard. It answers what is open, what is ageing, what is blocked, and which records deserve review first. Every count and priority is calculated by deterministic rules. The brief never performs a Shopify action.”
 
-“The core product judgment is one operational view without erasing merchant boundaries.”
+**Product point:** The useful unit of work is an operator decision across stores, not one store’s health score.
 
-## Three-minute walkthrough
+## 1:10–1:55 — Work the order queue
 
-**0:00–0:30 — Problem**
+**Show:** Open **Order queue**. Filter to one merchant, select orders older than 48 hours, then sort oldest first. Open **More filters** briefly to show payment, fulfilment, priority, and exception controls.
 
-“While helping a third-party fulfilment operator examine its Shopify workflows, I saw a team move store by store to confirm payment, inspect line items, identify exceptions, and remember what still needed action. The observed operation managed approximately eight accounts and performed approximately 24 recurring checks per day. I mapped that workflow and independently built this prototype; it is not their deployed product.”
+**Say:**
 
-**0:30–0:58 — Overview and brief**
+“The queue consolidates open fulfilment work while preserving merchant and store identity on every record. The default controls cover the most common triage moves; the less frequent controls stay collapsed. An operator can narrow the portfolio without confusing one client’s work with another’s.”
 
-Show the simulated label, today’s workload, immediate priorities, backlogs, blocked orders, and inventory constraints. “Facts, alerts, and ordering are deterministic. OpenAI is optional and cannot change the calculations.”
+**Product point:** The queue optimizes for actionable fulfilment work, not total commerce reporting.
 
-**0:58–1:28 — Unified queue**
+## 1:55–2:30 — Explain one priority
 
-Show actionable-first work across eight stores. Filter to one merchant, then a store; select paid/unfulfilled and older than 48 hours; sort oldest. “Every order keeps provider, merchant, and store context so an operator can prioritize without confusing client work.”
+**Show:** Open the highest-priority order. Point to payment and fulfilment state, age, line-item availability, exceptions, score inputs, and the recommended next step.
 
-**1:28–1:55 — Merchant and order drill-down**
+**Say:**
 
-Open the highest-risk merchant, compare backlog and service target, then open a delayed order. Show customer context, line items, availability, notes, partial/payment state, exceptions, priority inputs, and recommended next step. “The app does not fulfil or edit anything.”
+“Priority is a transparent rule score using age, payment, fulfilment state, order value, same-store customer value, service target, backlog risk, inventory, and manual exception signals. It ranks review work; it does not predict an outcome or make an autonomous decision. The recommendation is read-only.”
 
-**1:55–2:25 — Grounded question**
+## 2:30–3:15 — Demonstrate grounded questions
 
-Ask “Which merchant backlog increased the most?” Then ask a merchant-specific paid/unfulfilled question. Show cited merchant/store/order records. Ask an unsupported margin question and show the decline. “Retrieval is scoped before the model; output must exactly match source-derived text and identifiers.”
+**Show:** Open **Ask StoreOps**. Ask: “Which merchant has the most overdue orders?” Open one cited record. Then ask an unsupported question such as: “Which merchant has the best profit margin?”
 
-**2:25–2:45 — Methodology**
+**Say:**
 
-Show the three-layer architecture: normalized records, deterministic rules, constrained synthesis. Point out tenant boundaries and production requirements including OAuth, encrypted tokens, roles, isolation, and audit logs.
+“This is retrieval over typed operational records, not an open-ended chatbot. The app detects merchant and store scope, calculates the answer outside the model, and cites the matching records. OpenAI is an optional, non-authoritative output layer: it may return only the exact precomputed answer. If any sentence, value, link, record, or ordering changes, validation fails and the deterministic answer is shown. Questions without supporting data are declined.”
 
-**2:45–3:00 — Validation**
+**Product point:** Trust comes from visible evidence and refusal behavior, not fluent prose.
 
-“I deferred writes, billing, webhooks, and public OAuth because the next risk is workflow value. I would observe five operators performing morning triage and measure account switches, time to identify work, overdue recall, alert usefulness, false positives, and trust in cited answers.”
+## 3:15–3:45 — Show the architecture boundary
+
+**Show:** Open **Methodology** and point to the three layers: explicit ownership, deterministic operations, and constrained optional model output.
+
+**Say:**
+
+“Merchant and store IDs are mandatory before any calculation. The public route returns demo records only, and server-side tokens are not exposed. A production version would still require Shopify OAuth, encrypted per-store token storage, strict tenant isolation, roles, audit logs, retention controls, and model governance. I did not build those systems because the next risk is workflow value, not infrastructure scale.”
+
+## 3:45–4:00 — Close with the validation plan
+
+**Show:** Case study executive summary or “Next validation steps.”
+
+**Say:**
+
+“The strongest product decision was narrowing the problem from store analytics to cross-merchant triage. My next step would be a task test with fulfilment operators: measure account switches, time to identify all work, overdue-order recall, alert usefulness, false positives, and trust in cited answers before adding write actions.”
+
+## Claims to avoid
+
+- Do not call the demo client work, a pilot, or a deployed product.
+- Do not claim time savings, adoption, or improved fulfilment performance.
+- Do not say the model calculates priority or independently generates recommendations.
+- Do not describe every paid open order as ready; payment, inventory, hold, and partial state still matter.
+- Do not imply that the public deployment has production-grade authentication or tenant isolation.

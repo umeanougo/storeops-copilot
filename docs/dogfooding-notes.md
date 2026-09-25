@@ -21,13 +21,13 @@ This journal records my own testing of the portfolio prototype. It is **not exte
 - A complete order list looked like reporting rather than operations. The default now surfaces actionable work and keeps “all orders” as an explicit view.
 - A priority number alone felt arbitrary. Rows show reasons and a recommended next step; order detail exposes every rule input.
 - Store identity was visually secondary in early rows. Merchant and client-store labels are now attached to every operational record and evidence item.
-- “AI-generated” overstated the role of the model. Labels now distinguish deterministic fallback from AI-constrained synthesis.
+- “AI-generated” overstated the role of the model. Labels now distinguish the deterministic answer from an optional exact-output validation pass.
 - A recommendation could look executed. Copy now says “recommended next step” and repeats the read-only boundary.
 - A silent live failure could hide an integration problem. The source banner states when live mode was requested but simulated fallback is active.
 
 ## Prioritization issues found
 
-- Age alone could elevate an unpaid order above ready work. The score now treats payment state as a blocker and recommends merchant review instead of picking.
+- Age alone could elevate an unpaid order above paid open work. The score now treats payment state as a blocker and recommends merchant review instead of picking.
 - Partial fulfilment needed its own signal rather than appearing as generic open work.
 - Service-level targets needed to affect urgency, not just a global 48-hour threshold.
 - Inventory availability had to be joined only within the same store.

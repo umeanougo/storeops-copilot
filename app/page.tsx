@@ -16,36 +16,67 @@ import { AlertCard } from "@/components/alert-card";
 export const dynamic = "force-dynamic";
 
 export default async function OverviewPage() {
-  const result = await getStoreResult(); const { snapshot } = result;
+  const result = await getStoreResult();
+  const { snapshot } = result;
   const alerts = detectAlerts(snapshot, DEFAULT_THRESHOLDS);
   const metrics = calculateMetrics(snapshot, DEFAULT_THRESHOLDS);
   const backlogs = calculateMerchantBacklogs(snapshot, DEFAULT_THRESHOLDS);
-  const prioritized = getPrioritizedOrders(snapshot, DEFAULT_THRESHOLDS).slice(0, 5);
+  const prioritized = getPrioritizedOrders(snapshot, DEFAULT_THRESHOLDS).slice(0, 4);
   const brief = createFallbackBrief(snapshot, alerts, metrics);
-  const constraints = alerts.filter(alert => alert.issueType === "inventory_constraint").slice(0,3);
+  const constraints = alerts.filter(alert => alert.issueType === "inventory_constraint").slice(0, 3);
   const merchantById = new Map(snapshot.merchants.map(merchant => [merchant.id, merchant]));
   const storeById = new Map(snapshot.stores.map(store => [store.id, store]));
+  const date = new Date(snapshot.generatedAt).toLocaleDateString("en-CA", { month: "short", day: "numeric", year: "numeric", timeZone: snapshot.stores[0]?.timezone || "UTC" });
+
   return <AppShell source={snapshot.source} storeName={snapshot.provider.name} storeCount={snapshot.stores.length} warning={result.liveError}>
-    <main className="mx-auto max-w-[1280px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
-      <PageHeader eyebrow={`Across ${snapshot.merchants.length} merchant clients · As of ${new Date(snapshot.generatedAt).toLocaleDateString("en-CA",{month:"short",day:"numeric",year:"numeric",timeZone:snapshot.stores[0]?.timezone||"UTC"})}`} title="What needs fulfilment operations’ attention today?" description="One explainable view of ready work, ageing orders, merchant backlogs, payment blocks, and inventory constraints across every simulated client store." action={<Link href="/orders" className="inline-flex items-center gap-2 rounded-xl bg-[#1f2923] px-4 py-2.5 text-[10px] font-bold text-white hover:bg-[#304038]">Open unified queue <ArrowRight size={13}/></Link>}/>
-      <div className="mt-6"><SourceBanner result={result}/></div>
-      <section className="mt-5"><p className="small-caps mb-3 text-[8px] font-bold text-[#8b948c]">Today’s workload</p><div className="grid grid-cols-2 gap-3 lg:grid-cols-4 xl:grid-cols-8">
-        <MetricCard icon={PackageCheck} label="Open orders" value={String(metrics.totalOpenOrders)} note="Across stores"/>
-        <MetricCard icon={ShieldAlert} label="Paid + unfulfilled" value={String(metrics.paidUnfulfilledOrders)} note="Ready work" tone="good"/>
-        <MetricCard icon={Clock3} label="Older than 24h" value={String(metrics.olderThan24h)} note=">24h" tone="attention"/>
-        <MetricCard icon={TimerReset} label="Older than 48h" value={String(metrics.olderThan48h)} note=">48h" tone="attention"/>
-        <MetricCard icon={Store} label="Elevated merchants" value={String(metrics.merchantsAtRisk)} note="Backlog risk" tone="attention"/>
-        <MetricCard icon={Ban} label="Payment blocked" value={String(metrics.paymentBlockedOrders)} note="Not ready"/>
-        <MetricCard icon={Boxes} label="Inventory risks" value={String(metrics.inventoryConstraints)} note="Open orders" tone="attention"/>
-        <MetricCard icon={Clock3} label="Oldest order" value={ageLabel(metrics.oldestOutstandingHours)} note="Outstanding"/>
-      </div></section>
-      <div className="mt-5"><DailyBriefCard initial={brief}/></div>
-      <div className="mt-7 grid gap-6 xl:grid-cols-[1.2fr_.8fr]">
-        <section><div className="mb-3 flex items-end justify-between"><div><p className="small-caps text-[8px] font-bold text-[#8b948c]">Orders awaiting action</p><h2 className="mt-1 text-[17px] font-bold tracking-[-.03em]">Highest operational priority</h2></div><Link href="/orders" className="text-[9px] font-bold text-[#a64f34]">Open queue →</Link></div><div className="overflow-hidden rounded-[20px] border border-[#dfe2dc] bg-[#fffefa]">{prioritized.map(({order,priority})=><Link key={order.id} href={`/orders/${order.id}` as never} className="grid gap-3 border-b border-[#e8ebe6] p-4 last:border-0 hover:bg-[#fafbf8] sm:grid-cols-[1fr_auto]"><div><p className="text-[8px] font-bold uppercase tracking-[.08em] text-[#89928a]">{merchantById.get(order.merchantId)?.name} · {storeById.get(order.storeId)?.name}</p><p className="mt-1 text-[12px] font-bold">{order.name} · {order.customerName}</p><p className="mt-1 text-[9px] text-[#6f7a72]">{priority.reasons.slice(0,2).join(" · ")}</p></div><div className="flex items-center gap-3 sm:text-right"><span className={`rounded-full px-2.5 py-1 text-[8px] font-bold uppercase ${priority.band==="critical"?"bg-[#fee8e1] text-[#a7442d]":priority.band==="high"?"bg-[#fff0de] text-[#98601e]":"bg-[#edf1ec] text-[#59675e]"}`}>{priority.band}</span><span className="font-mono text-[10px]">P{priority.score}</span></div></Link>)}{!prioritized.length&&<p className="p-5 text-[10px] text-[#758077]">No open orders are available.</p>}</div></section>
-        <section><div className="mb-3 flex items-end justify-between"><div><p className="small-caps text-[8px] font-bold text-[#8b948c]">Merchant backlogs</p><h2 className="mt-1 text-[17px] font-bold tracking-[-.03em]">Where capacity is needed</h2></div><Link href="/merchants" className="text-[9px] font-bold text-[#a64f34]">All merchants →</Link></div><div className="space-y-2">{backlogs.slice(0,5).map(backlog=><Link key={backlog.merchantId} href={`/merchants/${backlog.merchantId}` as never} className="flex items-center justify-between rounded-[16px] border border-[#dfe2dc] bg-[#fffefa] p-4"><div><p className="text-[10px] font-bold">{merchantById.get(backlog.merchantId)?.name}</p><p className="mt-1 text-[8px] text-[#7f8881]">{storeById.get(backlog.storeId)?.name} · oldest {ageLabel(backlog.oldestOrderHours)}</p></div><div className="text-right"><p className="text-[16px] font-bold">{backlog.openOrders}</p><p className={`text-[8px] ${backlog.backlogChange>0?"text-[#a95337]":"text-[#7d867f]"}`}>{backlog.backlogChange>=0?"+":""}{backlog.backlogChange} vs prior</p></div></Link>)}</div></section>
+    <main className="mx-auto max-w-[1240px] px-4 py-7 sm:px-7 lg:px-9 lg:py-10">
+      <PageHeader eyebrow={`${snapshot.source === "demo" ? "Demo" : "Live"} snapshot · ${snapshot.stores.length} stores · ${date}`} title="What needs attention today" description="Open orders, ageing, and blockers in one operator view—without switching Shopify accounts." action={<Link href="/orders" className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#1f2923] px-5 py-3 text-[12px] font-bold text-white transition hover:bg-[#304038]">Open order queue <ArrowRight size={14}/></Link>} />
+      <div className="mt-6"><SourceBanner result={result} /></div>
+
+      <section className="mt-7" aria-labelledby="workload-heading">
+        <div className="mb-4 flex items-center justify-between"><h2 id="workload-heading" className="text-[12px] font-bold uppercase tracking-[.13em] text-[#7b857d]">Today’s workload</h2><p className="text-[12px] text-[#7b857d]">Excludes fulfilled orders</p></div>
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <MetricCard icon={PackageCheck} label="Open orders" value={String(metrics.totalOpenOrders)} note="Across stores" />
+          <MetricCard icon={ShieldAlert} label="Paid, still open" value={String(metrics.paidUnfulfilledOrders)} note="Payment confirmed" tone="good" />
+          <MetricCard icon={TimerReset} label="Overdue orders" value={String(metrics.olderThan48h)} note="> 48 hours" tone="attention" />
+          <MetricCard icon={Store} label="Merchants to review" value={String(metrics.merchantsAtRisk)} note="Rule threshold crossed" tone="attention" />
+        </div>
+        <div className="mt-3 grid overflow-hidden rounded-2xl border border-[var(--line)] bg-white sm:grid-cols-2 xl:grid-cols-4">
+          <MiniStat icon={Clock3} label="Ageing > 24h" value={String(metrics.olderThan24h)} />
+          <MiniStat icon={Ban} label="Payment blocked" value={String(metrics.paymentBlockedOrders)} />
+          <MiniStat icon={Boxes} label="Inventory blockers" value={String(metrics.inventoryConstraints)} />
+          <MiniStat icon={Clock3} label="Oldest open order" value={ageLabel(metrics.oldestOutstandingHours)} last />
+        </div>
+      </section>
+
+      <div className="mt-7"><DailyBriefCard initial={brief} /></div>
+
+      <div className="mt-9 grid gap-8 xl:grid-cols-[1.15fr_.85fr]">
+        <section aria-labelledby="priority-heading">
+          <SectionHeading eyebrow="Orders awaiting action" title="Highest priority" href="/orders" linkLabel="View queue" id="priority-heading" />
+          <div className="overflow-hidden rounded-[18px] border border-[var(--line)] bg-white">{prioritized.map(({ order, priority }, index) => <Link key={order.id} href={`/orders/${order.id}` as never} className="group grid gap-3 border-b border-[var(--line)] p-4 last:border-0 hover:bg-[#fafbf8] sm:grid-cols-[28px_minmax(0,1fr)_auto] sm:items-center"><span className="grid h-7 w-7 place-items-center rounded-full bg-[#eef2ed] text-[11px] font-bold text-[#526158]">{index + 1}</span><div><p className="text-[11px] font-semibold text-[#758077]">{merchantById.get(order.merchantId)?.name} · {storeById.get(order.storeId)?.name}</p><p className="mt-1 text-[14px] font-bold">{order.name} · {order.customerName}</p><p className="mt-1 text-[12px] text-[#667169]">{priority.reasons.slice(0, 2).join(" · ")}</p></div><div className="flex items-center gap-3"><span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase ${priority.band === "critical" ? "bg-[#fee8e1] text-[#a7442d]" : priority.band === "high" ? "bg-[#fff0de] text-[#98601e]" : "bg-[#edf1ec] text-[#59675e]"}`}>{priority.band}</span><span className="font-mono text-[12px]">P{priority.score}</span><ArrowRight size={14} className="text-[#a2aaa3] transition group-hover:translate-x-0.5" /></div></Link>)}{!prioritized.length && <p className="p-5 text-[13px] text-[#758077]">No open orders are available.</p>}</div>
+        </section>
+
+        <section aria-labelledby="backlog-heading">
+          <SectionHeading eyebrow="Merchant backlogs" title="Where work is building" href="/merchants" linkLabel="All merchants" id="backlog-heading" />
+          <div className="overflow-hidden rounded-[18px] border border-[var(--line)] bg-white">{backlogs.slice(0, 4).map(backlog => <Link key={backlog.merchantId} href={`/merchants/${backlog.merchantId}` as never} className="group flex items-center justify-between border-b border-[var(--line)] p-4 last:border-0 hover:bg-[#fafbf8]"><div><p className="text-[13px] font-bold">{merchantById.get(backlog.merchantId)?.name}</p><p className="mt-1 text-[11px] text-[#758077]">{storeById.get(backlog.storeId)?.name} · oldest {ageLabel(backlog.oldestOrderHours)}</p></div><div className="flex items-center gap-4 text-right"><div><p className="text-[20px] font-bold">{backlog.openOrders}</p><p className={`text-[10px] ${snapshot.source === "demo" && backlog.backlogChange > 0 ? "text-[#a95337]" : "text-[#7d867f]"}`}>{snapshot.source === "demo" ? `${backlog.backlogChange >= 0 ? "+" : ""}${backlog.backlogChange} vs demo baseline` : "Trend unavailable"}</p></div><ArrowRight size={14} className="text-[#a2aaa3] transition group-hover:translate-x-0.5" /></div></Link>)}</div>
+        </section>
       </div>
-      <section className="mt-7"><div className="mb-3 flex items-end justify-between"><div><p className="small-caps text-[8px] font-bold text-[#8b948c]">Inventory constraints</p><h2 className="mt-1 text-[17px] font-bold tracking-[-.03em]">Risks that could prevent fulfilment</h2></div><Link href="/inventory" className="text-[9px] font-bold text-[#a64f34]">Open inventory →</Link></div><div className="grid gap-3 md:grid-cols-3">{constraints.length?constraints.map(alert=><AlertCard key={alert.id} alert={alert} compact/>):<div className="rounded-[18px] border border-dashed border-[#d6dbd5] bg-[#faf9f5] p-5 text-[10px] text-[#758077] md:col-span-3">No open order has a same-store inventory shortfall.</div>}</div></section>
-      <section className="mt-7 rounded-[20px] border border-[#e0e3dd] bg-[#fbfaf6] p-5"><p className="small-caps text-[8px] font-bold text-[#8b948c]">Read-only operator workspace</p><p className="mt-2 max-w-[850px] text-[11px] leading-5 text-[#657067]">StoreOps Copilot recommends review steps but never modifies orders, inventory, fulfilments, payments, or customer records. Merchant and store boundaries remain visible for every operator decision.</p></section>
+
+      <section className="mt-9" aria-labelledby="inventory-heading">
+        <SectionHeading eyebrow="Inventory blockers" title="Orders with a stock shortfall" href="/inventory" linkLabel="View inventory" id="inventory-heading" />
+        <div className="grid gap-3 md:grid-cols-3">{constraints.length ? constraints.map(alert => <AlertCard key={alert.id} alert={alert} compact />) : <div className="rounded-[18px] border border-dashed border-[#d6dbd5] bg-[#fafbf8] p-5 text-[13px] text-[#758077] md:col-span-3">No open order has a same-store inventory shortfall.</div>}</div>
+      </section>
+
+      <p className="mt-9 border-t border-[var(--line)] pt-5 text-[11px] leading-5 text-[#758077]">Read-only portfolio prototype · No Shopify orders, inventory, fulfilments, payments, or customer records are modified.</p>
     </main>
   </AppShell>;
+}
+
+function MiniStat({ icon: Icon, label, value, last = false }: { icon: typeof Clock3; label: string; value: string; last?: boolean }) {
+  return <div className={`flex items-center justify-between gap-3 px-5 py-4 ${last ? "" : "border-b border-[var(--line)] sm:odd:border-r xl:border-b-0"}`}><div className="flex items-center gap-2.5"><Icon size={15} className="text-[#718078]" /><span className="text-[12px] text-[#667169]">{label}</span></div><span className="text-[15px] font-bold">{value}</span></div>;
+}
+
+function SectionHeading({ eyebrow, title, href, linkLabel, id }: { eyebrow: string; title: string; href: string; linkLabel: string; id: string }) {
+  return <div className="mb-4 flex items-end justify-between gap-4"><div><p className="text-[10px] font-bold uppercase tracking-[.13em] text-[#7b857d]">{eyebrow}</p><h2 id={id} className="mt-1.5 text-[20px] font-bold tracking-[-.035em]">{title}</h2></div><Link href={href as never} className="shrink-0 text-[12px] font-bold text-[#9d4d34]">{linkLabel} →</Link></div>;
 }

@@ -1,8 +1,32 @@
 import Link from "next/link";
+import { ArrowUpRight } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { PageHeader } from "@/components/page-header";
+import { SourceBanner } from "@/components/source-banner";
 import { getStoreResult } from "@/lib/data/store";
 import { formatMoney } from "@/lib/domain/format";
 
-export const dynamic="force-dynamic";
-export default async function CustomersPage(){const result=await getStoreResult();const s=result.snapshot;const merchantById=new Map(s.merchants.map(item=>[item.id,item]));const storeById=new Map(s.stores.map(item=>[item.id,item]));return <AppShell source={s.source} storeName={s.provider.name} storeCount={s.stores.length} warning={result.liveError}><main className="mx-auto max-w-[1080px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8"><PageHeader eyebrow="Supporting records" title="Customers by merchant and store" description="Customer history and value never cross merchant boundaries. These simulated records support order-priority explanations only."/><div className="mt-6 grid gap-3 sm:grid-cols-2">{s.customers.map(customer=><Link key={customer.id} href={`/customers/${customer.id}` as never} className="flex items-center gap-4 rounded-[18px] border border-[#dfe2dc] bg-[#fffefa] p-4 hover:border-[#b9c4bb]"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#e9eee8] text-[11px] font-bold text-[#496052]">{customer.name.split(" ").map(part=>part[0]).join("")}</span><div className="min-w-0 flex-1"><p className="text-[11px] font-bold">{customer.name}</p><p className="mt-0.5 text-[8px] text-[#858e87]">{merchantById.get(customer.merchantId)?.name} · {storeById.get(customer.storeId)?.name}</p></div><div className="text-right"><p className="text-[11px] font-bold">{formatMoney(customer.lifetimeValue.amount,customer.lifetimeValue.currencyCode)}</p><p className="mt-0.5 text-[8px] text-[#858e87]">{customer.ordersCount} store orders</p></div></Link>)}</div></main></AppShell>}
+export const dynamic = "force-dynamic";
+
+export default async function CustomersPage() {
+  const result = await getStoreResult();
+  const snapshot = result.snapshot;
+  const merchantById = new Map(snapshot.merchants.map(item => [item.id, item]));
+  const storeById = new Map(snapshot.stores.map(item => [item.id, item]));
+
+  return <AppShell source={snapshot.source} storeName={snapshot.provider.name} storeCount={snapshot.stores.length} warning={result.liveError}>
+    <main className="mx-auto max-w-[1100px] px-4 py-7 sm:px-7 lg:px-9 lg:py-10">
+      <PageHeader eyebrow="Supporting records" title="Customers within each store" description={`${snapshot.source === "demo" ? "Synthetic customer" : "Customer"} history and value stay inside one merchant and store boundary. Records are used only to explain order-priority rules.`} />
+      <div className="mt-6"><SourceBanner result={result} /></div>
+      <div className="mt-7 flex items-center justify-between"><h2 className="text-base font-bold">Customer records</h2><p className="text-sm text-[#758078]">{snapshot.customers.length} total</p></div>
+      <section className="mt-4 grid gap-3 sm:grid-cols-2" aria-label="Customer records">
+        {snapshot.customers.map(customer => <Link key={customer.id} href={`/customers/${customer.id}` as never} className="group flex items-center gap-4 rounded-[18px] border border-[var(--line)] bg-white p-5 transition hover:border-[#b9c4bb] hover:shadow-[0_10px_30px_rgba(30,45,35,.05)]">
+          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[#e9eee8] text-sm font-bold text-[#496052]">{customer.name.split(" ").map(part => part[0]).join("")}</span>
+          <div className="min-w-0 flex-1"><p className="text-sm font-bold">{customer.name}</p><p className="mt-1 truncate text-xs text-[#758078]">{merchantById.get(customer.merchantId)?.name} · {storeById.get(customer.storeId)?.name}</p></div>
+          <div className="shrink-0 text-right"><p className="text-sm font-bold">{formatMoney(customer.lifetimeValue.amount, customer.lifetimeValue.currencyCode)}</p><p className="mt-1 text-xs text-[#758078]">{customer.ordersCount} store orders</p></div>
+          <ArrowUpRight size={14} className="shrink-0 text-[#9aa39c] transition group-hover:text-[#a95337]" />
+        </Link>)}
+      </section>
+    </main>
+  </AppShell>;
+}

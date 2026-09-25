@@ -16,7 +16,7 @@ query StoreOpsSnapshot($ordersCursor: String, $customersCursor: String, $product
   orders(first: ${PAGE_SIZE}, after: $ordersCursor, sortKey: CREATED_AT, reverse: true) {
     pageInfo { hasNextPage endCursor }
     nodes {
-      id name createdAt updatedAt note tags displayFulfillmentStatus displayFinancialStatus
+      id name createdAt updatedAt note tags cancelledAt closed displayFulfillmentStatus displayFinancialStatus
       currentTotalPriceSet { shopMoney { amount currencyCode } }
       customer { id displayName numberOfOrders amountSpent { amount currencyCode } lastOrder { createdAt } tags }
       lineItems(first: 100) { nodes { id title variantTitle quantity originalTotalSet { shopMoney { amount currencyCode } } product { id } variant { id } } }
@@ -36,7 +36,7 @@ query StoreOpsSnapshot($ordersCursor: String, $customersCursor: String, $product
 
 type RawMoney = { amount: string; currencyCode: string };
 type RawCustomer = { id: string; displayName?: string | null; numberOfOrders?: string | number; amountSpent?: RawMoney; lastOrder?: { createdAt?: string | null } | null; tags?: string[] };
-type RawOrder = { id: string; name: string; createdAt: string; updatedAt: string; note?: string | null; tags?: string[]; displayFulfillmentStatus?: string | null; displayFinancialStatus?: string | null; currentTotalPriceSet?: { shopMoney?: RawMoney }; customer?: RawCustomer | null; lineItems?: { nodes?: Array<{ id: string; title: string; variantTitle?: string | null; quantity: number; originalTotalSet?: { shopMoney?: RawMoney }; product?: { id: string } | null; variant?: { id: string } | null }> }; fulfillments?: Array<{ createdAt?: string; status?: string }>; refunds?: Array<{ id: string; createdAt: string; totalRefundedSet?: { shopMoney?: RawMoney } }> };
+type RawOrder = { id: string; name: string; createdAt: string; updatedAt: string; note?: string | null; tags?: string[]; cancelledAt?: string | null; closed?: boolean; displayFulfillmentStatus?: string | null; displayFinancialStatus?: string | null; currentTotalPriceSet?: { shopMoney?: RawMoney }; customer?: RawCustomer | null; lineItems?: { nodes?: Array<{ id: string; title: string; variantTitle?: string | null; quantity: number; originalTotalSet?: { shopMoney?: RawMoney }; product?: { id: string } | null; variant?: { id: string } | null }> }; fulfillments?: Array<{ createdAt?: string; status?: string }>; refunds?: Array<{ id: string; createdAt: string; totalRefundedSet?: { shopMoney?: RawMoney } }> };
 type RawProduct = { id: string; title: string; productType?: string; status?: string; variants?: { nodes?: Array<{ id: string; title: string; sku?: string | null; price?: string; inventoryQuantity?: number | null }> } };
 type QueryData = { shop: { name: string; myshopifyDomain: string; currencyCode: string; ianaTimezone?: string | null }; orders: Connection<RawOrder>; customers: Connection<RawCustomer>; products: Connection<RawProduct> };
 type Context = { merchantId: string; storeId: string };
@@ -110,7 +110,7 @@ async function fetchOne(connection: StoreConnection) {
   const orders = normalizeOrders(allOrders, shop.currencyCode, context);
   const sales = new Map<string, { units7: number; units30: number; lastSoldAt: string | null }>();
   const now = new Date();
-  for (const order of orders) for (const item of order.lineItems) if (item.variantId) {
+  for (const order of orders.filter(order => !order.cancelledAt)) for (const item of order.lineItems) if (item.variantId) {
     const ageDays = (now.getTime() - new Date(order.createdAt).getTime()) / 86_400_000;
     const current = sales.get(item.variantId) ?? { units7: 0, units30: 0, lastSoldAt: null };
     if (ageDays <= 7) current.units7 += item.quantity; if (ageDays <= 30) current.units30 += item.quantity;
@@ -131,7 +131,7 @@ export async function fetchShopifySnapshot(): Promise<StoreSnapshot> {
     source: "live", generatedAt, provider: { id: "fp_live", name: process.env.FULFILLMENT_PROVIDER_NAME || "Connected fulfilment provider" },
     merchants: records.map(record => record.merchant), stores: records.map(record => record.store), orders,
     customers: records.flatMap(record => record.customers), products: records.flatMap(record => record.products), refunds: records.flatMap(record => record.refunds),
-    tasks: orders.filter(order => order.fulfillmentStatus !== "FULFILLED").map(order => ({ id: `task_${order.id}`, merchantId: order.merchantId, storeId: order.storeId, orderId: order.id, taskType: order.financialStatus === "PAID" ? "pick_pack" : "payment_check", status: order.financialStatus === "PAID" ? "open" : "blocked", priority: 0, createdAt: order.createdAt, dueAt: generatedAt })),
+    tasks: orders.filter(order => !order.cancelledAt && !order.closed && order.fulfillmentStatus !== "FULFILLED").map(order => ({ id: `task_${order.id}`, merchantId: order.merchantId, storeId: order.storeId, orderId: order.id, taskType: order.financialStatus === "PAID" ? "pick_pack" : "payment_check", status: order.financialStatus === "PAID" ? "open" : "blocked", priority: 0, createdAt: order.createdAt, dueAt: generatedAt })),
     warnings: records.flatMap(record => record.warnings),
   };
 }
@@ -142,12 +142,12 @@ export function normalizeCustomers(raw: RawCustomer[], fallbackCurrency: string,
 
 export function normalizeOrders(raw: RawOrder[], fallbackCurrency: string, context: Context = { merchantId: "merchant_test", storeId: "store_test" }): Order[] {
   return raw.map(order => { const amount = order.currentTotalPriceSet?.shopMoney; const fulfillment = order.fulfillments?.[0]; return {
-    id: order.id, merchantId: context.merchantId, storeId: context.storeId, name: order.name, createdAt: order.createdAt, updatedAt: order.updatedAt, customerId: order.customer?.id || null, customerName: order.customer?.displayName || "Guest", total: { amount: Number(amount?.amount || 0), currencyCode: amount?.currencyCode || fallbackCurrency }, fulfillmentStatus: fulfillmentState(order.displayFulfillmentStatus), financialStatus: financialState(order.displayFinancialStatus), fulfillmentCreatedAt: fulfillment?.createdAt || null, tags: order.tags || [], notes: order.note || "", riskSignals: [], lineItems: (order.lineItems?.nodes || []).map(item => ({ id: item.id, productId: item.product?.id || null, variantId: item.variant?.id || null, title: item.title, variantTitle: item.variantTitle || "Default", quantity: item.quantity, total: { amount: Number(item.originalTotalSet?.shopMoney?.amount || 0), currencyCode: item.originalTotalSet?.shopMoney?.currencyCode || fallbackCurrency } })) };
+    id: order.id, merchantId: context.merchantId, storeId: context.storeId, name: order.name, createdAt: order.createdAt, updatedAt: order.updatedAt, customerId: order.customer?.id || null, customerName: order.customer?.displayName || "Guest", total: { amount: Number(amount?.amount || 0), currencyCode: amount?.currencyCode || fallbackCurrency }, cancelledAt: order.cancelledAt || null, closed: Boolean(order.closed), fulfillmentStatus: fulfillmentState(order.displayFulfillmentStatus), financialStatus: financialState(order.displayFinancialStatus), fulfillmentCreatedAt: fulfillment?.createdAt || null, tags: order.tags || [], notes: order.note || "", riskSignals: [], lineItems: (order.lineItems?.nodes || []).map(item => ({ id: item.id, productId: item.product?.id || null, variantId: item.variant?.id || null, title: item.title, variantTitle: item.variantTitle || "Default", quantity: item.quantity, total: { amount: Number(item.originalTotalSet?.shopMoney?.amount || 0), currencyCode: item.originalTotalSet?.shopMoney?.currencyCode || fallbackCurrency } })) };
   });
 }
 
 export function normalizeProducts(raw: RawProduct[], fallbackCurrency: string, sales = new Map<string, { units7: number; units30: number; lastSoldAt: string | null }>(), context: Context = { merchantId: "merchant_test", storeId: "store_test" }): Product[] {
-  return raw.map(product => ({ id: product.id, merchantId: context.merchantId, storeId: context.storeId, title: product.title, productType: product.productType || "", status: product.status === "DRAFT" ? "DRAFT" : product.status === "ARCHIVED" ? "ARCHIVED" : "ACTIVE", variants: (product.variants?.nodes || []).map(variant => { const activity = sales.get(variant.id); return { id: variant.id, merchantId: context.merchantId, storeId: context.storeId, productId: product.id, productTitle: product.title, title: variant.title, sku: variant.sku || "No SKU", available: variant.inventoryQuantity ?? 0, price: { amount: Number(variant.price || 0), currencyCode: fallbackCurrency }, unitsSold7d: activity?.units7 || 0, unitsSold30d: activity?.units30 || 0, lastSoldAt: activity?.lastSoldAt || null }; }) }));
+  return raw.map(product => ({ id: product.id, merchantId: context.merchantId, storeId: context.storeId, title: product.title, productType: product.productType || "", status: product.status === "DRAFT" ? "DRAFT" : product.status === "ARCHIVED" ? "ARCHIVED" : "ACTIVE", variants: (product.variants?.nodes || []).map(variant => { const activity = sales.get(variant.id); return { id: variant.id, merchantId: context.merchantId, storeId: context.storeId, productId: product.id, productTitle: product.title, title: variant.title, sku: variant.sku || "No SKU", available: variant.inventoryQuantity ?? null, price: { amount: Number(variant.price || 0), currencyCode: fallbackCurrency }, unitsSold7d: activity?.units7 || 0, unitsSold30d: activity?.units30 || 0, lastSoldAt: activity?.lastSoldAt || null }; }) }));
 }
 
 export function normalizeRefunds(raw: RawOrder[], fallbackCurrency: string, context: Context = { merchantId: "merchant_test", storeId: "store_test" }): Refund[] {

@@ -6,13 +6,14 @@
 - Every public record is fictitious, labelled simulated, and uses reserved `.test` emails where needed.
 - Shopify and OpenAI secrets are read only in server code; ignored environment files are not committed.
 - Admin API tokens are never returned by browser routes or logged.
+- Production builds force the synthetic demo source; local live mode is not exposed without an authentication layer.
 - Shopify access is read-only and there are no mutation or action endpoints.
 - Merchant and store IDs are required on orders, customers, products, alerts, recommendations, and tasks.
 - Customer value and retrieval filters remain inside the same merchant/store boundary.
 - AI receives only scoped records relevant to the question; output is schema-validated and checked against an exact record allowlist.
 - Unsupported questions and provider failures decline or fall back deterministically.
 
-The demo is an internal fulfilment-operator view across client stores. It does not represent a merchant-facing tenancy model and does not imply one merchant can access another merchant’s records.
+The demo is an internal fulfilment-operator view across client stores. It does not represent a merchant-facing tenancy model and does not imply one merchant can access another merchant’s records. Live Shopify mode is intentionally limited to local development until operator authentication and authorization exist.
 
 ## Data minimization
 

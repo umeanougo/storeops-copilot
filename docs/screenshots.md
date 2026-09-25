@@ -4,7 +4,7 @@ Use a 1440 × 1000 desktop viewport and 390 × 844 mobile viewport. Keep simulat
 
 ## Portfolio set
 
-1. **Operations overview** — workload metrics, immediate priorities, merchant backlogs, and AI-assisted brief.
+1. **Operations overview** — workload metrics, immediate priorities, merchant backlogs, and deterministic brief.
 2. **Unified order queue** — multiple merchants/stores with actionable-first rows and filters visible.
 3. **Filtered merchant queue** — one merchant/store scope proving boundary-aware filtering.
 4. **Merchant backlog** — service target, average age, oldest order, trend, risk, exceptions, and queue link.
@@ -19,7 +19,7 @@ Use a 1440 × 1000 desktop viewport and 390 × 844 mobile viewport. Keep simulat
 ## Integrity rules
 
 - Keep “simulated demo data” visible where practical.
-- Use only fictitious seeded records and anonymized customers.
+- Use only fictitious seeded records and synthetic customers.
 - Never capture live credentials, environment files, network logs, or customer PII.
 - Do not crop away limitations, merchant/store labels, or the read-only boundary.
 - Do not imply adoption, measured improvement, client ownership, or Shopify endorsement.

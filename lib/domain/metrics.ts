@@ -1,7 +1,7 @@
 import type { AlertThresholds, MerchantBacklog, OperationsMetrics, Order, OrderPriority, StoreSnapshot } from "./types";
 import { hoursBetween } from "./format";
 
-export const isOpenOrder = (order: Order) => order.fulfillmentStatus !== "FULFILLED";
+export const isOpenOrder = (order: Order) => !order.cancelledAt && !order.closed && order.fulfillmentStatus !== "FULFILLED";
 export const isPaymentConfirmed = (order: Order) => order.financialStatus === "PAID" || order.financialStatus === "AUTHORIZED";
 
 export function calculateMerchantBacklogs(snapshot: StoreSnapshot, thresholds: AlertThresholds): MerchantBacklog[] {
@@ -9,9 +9,9 @@ export function calculateMerchantBacklogs(snapshot: StoreSnapshot, thresholds: A
     const store = snapshot.stores.find(item => item.merchantId === merchant.id)!;
     const openOrders = snapshot.orders.filter(order => order.merchantId === merchant.id && isOpenOrder(order));
     const ages = openOrders.map(order => hoursBetween(snapshot.generatedAt, order.createdAt));
-    const backlogChange = openOrders.length - merchant.previousOpenOrders;
+    const backlogChange = snapshot.source === "demo" ? openOrders.length - merchant.previousOpenOrders : 0;
     const olderThan48h = ages.filter(age => age > thresholds.overdueHours).length;
-    const elevated = olderThan48h > 0 || (openOrders.length >= thresholds.backlogOpenOrders && backlogChange >= thresholds.backlogIncreaseOrders);
+    const elevated = olderThan48h > 0 || (snapshot.source === "demo" && openOrders.length >= thresholds.backlogOpenOrders && backlogChange >= thresholds.backlogIncreaseOrders);
     const riskLevel: MerchantBacklog["riskLevel"] = elevated ? "elevated" : openOrders.length > 0 ? "watch" : "clear";
     return {
       merchantId: merchant.id,
@@ -38,7 +38,7 @@ export function calculateOrderPriority(snapshot: StoreSnapshot, order: Order, th
   const backlog = calculateMerchantBacklogs(snapshot, thresholds).find(item => item.merchantId === order.merchantId);
   const inventoryBlocked = order.lineItems.some(item => {
     const variant = snapshot.products.flatMap(product => product.variants).find(candidate => candidate.id === item.variantId && candidate.merchantId === order.merchantId && candidate.storeId === order.storeId);
-    return variant != null && variant.available < item.quantity;
+    return variant?.available != null && variant.available < item.quantity;
   });
   const reasons: string[] = [];
   let score = 10;
@@ -82,7 +82,7 @@ export function calculateMetrics(snapshot: StoreSnapshot, thresholds: AlertThres
   const backlogs = calculateMerchantBacklogs(snapshot, thresholds);
   const inventoryConstraints = open.filter(order => order.lineItems.some(item => {
     const variant = snapshot.products.flatMap(product => product.variants).find(candidate => candidate.id === item.variantId && candidate.merchantId === order.merchantId && candidate.storeId === order.storeId);
-    return variant != null && variant.available < item.quantity;
+    return variant?.available != null && variant.available < item.quantity;
   })).length;
   return {
     totalOpenOrders: open.length,

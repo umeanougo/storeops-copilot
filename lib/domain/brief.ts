@@ -26,7 +26,7 @@ export function createFallbackBrief(snapshot: StoreSnapshot, alerts: Operational
     summary: `${metrics.totalOpenOrders} orders are open across ${snapshot.merchants.length} merchant clients. ${metrics.olderThan48h} are older than 48 hours, ${metrics.paymentBlockedOrders} are blocked by payment, and ${metrics.inventoryConstraints} have an inventory constraint.`,
     priorities: top.map(alert => ({
       alertId: alert.id,
-      label: alert.title,
+      label: alert.title.replace(`${merchantById.get(alert.merchantId)?.name ?? ""} · `, ""),
       merchantName: merchantById.get(alert.merchantId)?.name ?? "Unknown merchant",
       storeName: storeById.get(alert.storeId)?.name ?? "Unknown store",
       reason: alert.detected,
@@ -42,10 +42,12 @@ export function createFallbackBrief(snapshot: StoreSnapshot, alerts: Operational
     })),
     blockedSummary: `${metrics.paymentBlockedOrders} open order${metrics.paymentBlockedOrders === 1 ? " is" : "s are"} waiting for payment confirmation or status review.`,
     inventorySummary: `${metrics.inventoryConstraints} open order${metrics.inventoryConstraints === 1 ? " has" : "s have"} a same-store inventory shortfall in the available data.`,
-    changeSummary: largestIncrease && largestIncrease.backlogChange > 0
-      ? `${merchantById.get(largestIncrease.merchantId)?.name ?? "A merchant"} has the largest available backlog increase at +${largestIncrease.backlogChange} open orders.`
-      : `No merchant backlog increased in the available comparison period. Oldest outstanding order: ${ageLabel(metrics.oldestOutstandingHours)}.`,
-    caveat: "All facts are calculated from the available simulated store snapshot. Recommended steps require operator review and do not perform Shopify actions.",
+    changeSummary: snapshot.source === "live"
+      ? `Backlog trend needs stored history and is unavailable in this live snapshot. Oldest outstanding order: ${ageLabel(metrics.oldestOutstandingHours)}.`
+      : largestIncrease && largestIncrease.backlogChange > 0
+      ? `${merchantById.get(largestIncrease.merchantId)?.name ?? "A merchant"} has the largest increase against the demo baseline at +${largestIncrease.backlogChange} open orders.`
+      : `No merchant backlog increased against the demo baseline. Oldest outstanding order: ${ageLabel(metrics.oldestOutstandingHours)}.`,
+    caveat: `All facts are calculated from the available ${snapshot.source === "demo" ? "simulated" : "live"} store snapshot. Recommended steps require operator review and do not perform Shopify actions.`,
     generatedBy: "deterministic_fallback",
   };
 }

@@ -10,6 +10,7 @@ export function detectAlerts(snapshot: StoreSnapshot, thresholds: AlertThreshold
   const storeById = new Map(snapshot.stores.map(store => [store.id, store]));
   const customerById = new Map(snapshot.customers.map(customer => [customer.id, customer]));
   const variants = snapshot.products.flatMap(product => product.variants);
+  const activeProductIds = new Set(snapshot.products.filter(product => product.status === "ACTIVE").map(product => product.id));
 
   const contextData = (order: Order): SupportingDatum[] => {
     const merchant = merchantById.get(order.merchantId)!;
@@ -62,7 +63,7 @@ export function detectAlerts(snapshot: StoreSnapshot, thresholds: AlertThreshold
     ];
 
     if (order.financialStatus === "PAID") addOrderAlert(order, {
-      suffix: "paid-unfulfilled", issueType: "paid_unfulfilled", title: `${merchant.name} · ${order.name} is ready for fulfilment`,
+      suffix: "paid-unfulfilled", issueType: "paid_unfulfilled", title: `${merchant.name} · ${order.name} is paid and still open`,
       detected: `${store.name} order ${order.name} is paid and remains ${order.fulfillmentStatus.toLowerCase().replaceAll("_", " ")}.`,
       why: "Payment is confirmed and the order still has fulfilment work remaining.", rule: "Flag every paid order that is not fully fulfilled.", threshold: "Payment = PAID and fulfilment ≠ FULFILLED",
       recommendedAction: priority.recommendedAction, supportingData: baseFacts,
@@ -101,7 +102,7 @@ export function detectAlerts(snapshot: StoreSnapshot, thresholds: AlertThreshold
     if (["UNKNOWN", "REQUEST_DECLINED", "ON_HOLD"].includes(order.fulfillmentStatus)) addOrderAlert(order, {
       suffix: "status-review", issueType: "unusual_status", title: `${merchant.name} · ${order.name} needs status review`,
       detected: `${store.name} order ${order.name} has fulfilment status ${order.fulfillmentStatus.replaceAll("_", " ")}.`,
-      why: "The current status does not represent a normal ready-to-pick or completed state.", rule: "Flag open orders with unknown, declined, or on-hold fulfilment status.", threshold: "Fulfilment ∈ UNKNOWN, REQUEST_DECLINED, ON_HOLD", recommendedAction: "Inspect the source order and document the blocker before allocating fulfilment capacity.", score: Math.max(58, priority.score), supportingData: baseFacts,
+      why: "The current status does not represent a normal ready-to-pick or completed state.", rule: "Flag open orders with unknown, declined, or on-hold fulfilment status.", threshold: "Fulfilment ∈ UNKNOWN, REQUEST_DECLINED, ON_HOLD", recommendedAction: "Inspect the source order and document the blocker before assigning the next fulfilment step.", score: Math.max(58, priority.score), supportingData: baseFacts,
     });
 
     if (!isPaymentConfirmed(order)) addOrderAlert(order, {
@@ -112,7 +113,7 @@ export function detectAlerts(snapshot: StoreSnapshot, thresholds: AlertThreshold
 
     const shortages = order.lineItems.flatMap(item => {
       const variant = variants.find(candidate => candidate.id === item.variantId && candidate.merchantId === order.merchantId && candidate.storeId === order.storeId);
-      return variant && variant.available < item.quantity ? [{ item, variant }] : [];
+      return variant?.available != null && variant.available < item.quantity ? [{ item, variant }] : [];
     });
     if (shortages.length) addOrderAlert(order, {
       suffix: "inventory-blocked", issueType: "inventory_constraint", title: `${merchant.name} · inventory may block ${order.name}`,
@@ -128,19 +129,19 @@ export function detectAlerts(snapshot: StoreSnapshot, thresholds: AlertThreshold
     const score = Math.min(92, 65 + backlog.olderThan48h * 6 + backlog.backlogChange * 3);
     alerts.push({
       id: `backlog-${merchant.id}`, merchantId: merchant.id, storeId: store.id, title: `${merchant.name} backlog is increasing`, severity: severityFor(score), issueType: "merchant_backlog", detectedAt: snapshot.generatedAt,
-      detected: `${store.name} has ${backlog.openOrders} open orders, up ${backlog.backlogChange} from the prior demo period.`,
-      why: "The current open-order count crosses both the backlog size and period-over-period increase thresholds.",
-      supportingData: [{ label: "Merchant", value: merchant.name, recordType: "merchant", recordId: merchant.id }, { label: "Client store", value: store.name, recordType: "store", recordId: store.id }, { label: "Open orders", value: String(backlog.openOrders), recordType: "merchant", recordId: merchant.id }, { label: "Backlog change", value: `+${backlog.backlogChange}`, recordType: "merchant", recordId: merchant.id }, { label: "Older than 48h", value: String(backlog.olderThan48h), recordType: "merchant", recordId: merchant.id }],
-      rule: "Flag a merchant when open orders and backlog growth both cross configured thresholds.", threshold: `${thresholds.backlogOpenOrders}+ open orders and increase of ${thresholds.backlogIncreaseOrders}+`, recommendedAction: "Review staffing and assign owners to the oldest paid orders for this merchant first.", recordLink: `/merchants/${merchant.id}`, recordType: "merchant", recordId: merchant.id, priorityScore: score, findingSource: "deterministic_rule",
+      detected: `${store.name} has ${backlog.openOrders} open orders, ${backlog.backlogChange} above the demo baseline.`,
+      why: "The current open-order count crosses both the backlog size and demo-baseline thresholds.",
+      supportingData: [{ label: "Merchant", value: merchant.name, recordType: "merchant", recordId: merchant.id }, { label: "Client store", value: store.name, recordType: "store", recordId: store.id }, { label: "Open orders", value: String(backlog.openOrders), recordType: "merchant", recordId: merchant.id }, { label: "Change vs demo baseline", value: `+${backlog.backlogChange}`, recordType: "merchant", recordId: merchant.id }, { label: "Older than 48h", value: String(backlog.olderThan48h), recordType: "merchant", recordId: merchant.id }],
+      rule: "In demo mode, flag a merchant when open orders and change against the seeded baseline cross configured thresholds.", threshold: `${thresholds.backlogOpenOrders}+ open orders and ${thresholds.backlogIncreaseOrders}+ above demo baseline`, recommendedAction: "Assign owners to the oldest paid orders for this merchant first.", recordLink: `/merchants/${merchant.id}`, recordType: "merchant", recordId: merchant.id, priorityScore: score, findingSource: "deterministic_rule",
     });
   }
 
   for (const variant of variants) {
     const merchant = merchantById.get(variant.merchantId)!;
     const store = storeById.get(variant.storeId)!;
-    if (variant.available < thresholds.lowInventoryUnits) alerts.push({
+    if (variant.available != null && activeProductIds.has(variant.productId) && variant.available < thresholds.lowInventoryUnits) alerts.push({
       id: `low-stock-${variant.id}`, merchantId: variant.merchantId, storeId: variant.storeId, title: `${merchant.name} · ${variant.productTitle} is running low`, severity: variant.available === 0 ? "critical" : "medium", issueType: "low_inventory", detectedAt: snapshot.generatedAt,
-      detected: `${store.name} has ${variant.available} units available; ${variant.unitsSold7d} sold in seven days.`, why: `Availability is below the ${thresholds.lowInventoryUnits}-unit review floor. This is a current inventory fact, not a forecast.`, supportingData: [{ label: "Merchant", value: merchant.name, recordType: "merchant", recordId: merchant.id }, { label: "Client store", value: store.name, recordType: "store", recordId: store.id }, { label: "Available", value: `${variant.available} units`, recordType: "variant", recordId: variant.id }, { label: "Sold · 7 days", value: `${variant.unitsSold7d} units`, recordType: "variant", recordId: variant.id }], rule: "Flag a same-store active variant below the configured inventory floor.", threshold: `Fewer than ${thresholds.lowInventoryUnits} units`, recommendedAction: "Check open-order demand and physical inventory before allocating or escalating replenishment.", recordLink: `/inventory/${variant.id}`, recordType: "product", recordId: variant.id, priorityScore: variant.available === 0 ? 90 : 54, findingSource: "deterministic_rule",
+      detected: `${store.name} has ${variant.available} units available; ${variant.unitsSold7d} units were ordered in the last seven days.`, why: `Availability is below the ${thresholds.lowInventoryUnits}-unit review floor. This is a current inventory fact, not a forecast.`, supportingData: [{ label: "Merchant", value: merchant.name, recordType: "merchant", recordId: merchant.id }, { label: "Client store", value: store.name, recordType: "store", recordId: store.id }, { label: "Available", value: `${variant.available} units`, recordType: "variant", recordId: variant.id }, { label: "Ordered · 7 days", value: `${variant.unitsSold7d} units`, recordType: "variant", recordId: variant.id }], rule: "Flag a same-store active variant below the configured inventory floor.", threshold: `Fewer than ${thresholds.lowInventoryUnits} units`, recommendedAction: "Check open-order demand and physical inventory before allocating or escalating replenishment.", recordLink: `/inventory/${variant.id}`, recordType: "product", recordId: variant.id, priorityScore: variant.available === 0 ? 90 : 54, findingSource: "deterministic_rule",
     });
   }
 

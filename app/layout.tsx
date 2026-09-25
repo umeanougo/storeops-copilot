@@ -7,9 +7,9 @@ const mono = Geist_Mono({ subsets: ["latin"], variable: "--font-mono" });
 
 export const metadata: Metadata = {
   title: { default: "StoreOps Copilot", template: "%s · StoreOps Copilot" },
-  description: "An independently built, AI-assisted Shopify operations portfolio prototype.",
+  description: "A multi-merchant Shopify fulfilment prototype with an explainable order queue and record-grounded answers.",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="en"><body className={`${sans.variable} ${mono.variable}`}>{children}</body></html>;
+  return <html lang="en" data-scroll-behavior="smooth"><body className={`${sans.variable} ${mono.variable}`}>{children}</body></html>;
 }

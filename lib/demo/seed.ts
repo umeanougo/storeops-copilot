@@ -35,7 +35,13 @@ const openStatuses: Array<{ fulfillment: FulfillmentState; financial: FinancialS
   { fulfillment: "ON_HOLD", financial: "AUTHORIZED", age: 9 },
 ];
 
-export function createDemoSnapshot(asOf = new Date("2026-08-02T14:00:00-04:00")): StoreSnapshot {
+function currentDemoHour() {
+  const now = new Date();
+  now.setUTCMinutes(0, 0, 0);
+  return now;
+}
+
+export function createDemoSnapshot(asOf = currentDemoHour()): StoreSnapshot {
   const provider = { id: "fp_harbour", name: "Harbour Fulfilment Collective" };
   const merchants: Merchant[] = merchantSeeds.map(seed => ({
     id: seed.id,
@@ -130,12 +136,14 @@ export function createDemoSnapshot(asOf = new Date("2026-08-02T14:00:00-04:00"))
         customerId: customer.id,
         customerName: customer.name,
         total: money(amount),
+        cancelledAt: null,
+        closed: fulfillmentStatus === "FULFILLED",
         fulfillmentStatus,
         financialStatus,
         fulfillmentCreatedAt: fulfillmentStatus === "FULFILLED" ? at(asOf, Math.max(1, age - 4)) : fulfillmentStatus === "PARTIALLY_FULFILLED" ? at(asOf, 8) : null,
         tags: highValue ? ["priority-review"] : [],
         notes: orderIndex === 2 && isOpen ? "Simulated note: confirm payment before releasing inventory." : "",
-        riskSignals: variant.available < quantity && isOpen ? ["inventory_shortfall"] : [],
+        riskSignals: variant.available != null && variant.available < quantity && isOpen ? ["inventory_shortfall"] : [],
         lineItems: [{
           id: `li_${merchantIndex + 1}_${orderIndex + 1}`,
           productId: product.id,

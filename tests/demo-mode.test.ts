@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { getStoreResult } from "@/lib/data/store";
 import { createDemoSnapshot } from "@/lib/demo/seed";
 import { detectAlerts } from "@/lib/domain/alerts";
@@ -9,9 +9,16 @@ import { synthesizeAnswer, synthesizeBrief } from "@/lib/ai/synthesis";
 
 const originalMode = process.env.STOREOPS_DATA_MODE;
 const originalOpenAiKey = process.env.OPENAI_API_KEY;
+const originalShopifyDomain = process.env.SHOPIFY_STORE_DOMAIN;
+const originalShopifyToken = process.env.SHOPIFY_ADMIN_ACCESS_TOKEN;
+const originalShopifyStores = process.env.SHOPIFY_STORES_JSON;
 afterEach(() => {
   if (originalMode === undefined) delete process.env.STOREOPS_DATA_MODE; else process.env.STOREOPS_DATA_MODE = originalMode;
   if (originalOpenAiKey === undefined) delete process.env.OPENAI_API_KEY; else process.env.OPENAI_API_KEY = originalOpenAiKey;
+  vi.unstubAllEnvs();
+  if (originalShopifyDomain === undefined) delete process.env.SHOPIFY_STORE_DOMAIN; else process.env.SHOPIFY_STORE_DOMAIN = originalShopifyDomain;
+  if (originalShopifyToken === undefined) delete process.env.SHOPIFY_ADMIN_ACCESS_TOKEN; else process.env.SHOPIFY_ADMIN_ACCESS_TOKEN = originalShopifyToken;
+  if (originalShopifyStores === undefined) delete process.env.SHOPIFY_STORES_JSON; else process.env.SHOPIFY_STORES_JSON = originalShopifyStores;
 });
 
 describe("credential-free demo mode", () => {
@@ -33,6 +40,15 @@ describe("credential-free demo mode", () => {
     expect(result.requestedMode).toBe("live");
     expect(result.snapshot.source).toBe("demo");
     expect(result.liveError).toBe("Missing Shopify credentials");
+  });
+
+  it("forces synthetic data in public production builds", async () => {
+    process.env.STOREOPS_DATA_MODE = "live";
+    vi.stubEnv("NODE_ENV", "production");
+    process.env.SHOPIFY_STORE_DOMAIN = "private-store.myshopify.com";
+    process.env.SHOPIFY_ADMIN_ACCESS_TOKEN = "secret";
+    const result = await getStoreResult();
+    expect(result).toMatchObject({ requestedMode:"live", snapshot:{source:"demo"}, liveError:"Live mode requires a protected, non-production environment" });
   });
 
   it("uses deterministic AI fallbacks without OpenAI credentials", async () => {

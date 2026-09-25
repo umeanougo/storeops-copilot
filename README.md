@@ -1,12 +1,12 @@
 # StoreOps Copilot
 
-**An independently built, AI-assisted multi-merchant fulfilment operations prototype inspired by real workflow discovery.**
+**A cross-merchant Shopify fulfilment workspace for third-party operators.**
 
 **Live demo:** [storeops-copilot.vercel.app](https://storeops-copilot.vercel.app)
 
-StoreOps Copilot gives a third-party fulfilment operator one calm workspace for answering: **Across every merchant we support, what does the fulfilment team need to act on today?** It consolidates order work across merchant-owned Shopify stores while preserving the provider → merchant → store boundary on every record, alert, and recommendation.
+StoreOps Copilot brings open orders, payment blocks, ageing, inventory shortfalls, and merchant backlogs from multiple client stores into one queue. Rule-based ranking explains what to review first; source-linked Q&A shows the records behind each answer.
 
-> Portfolio prototype only. It is not a commissioned client product, production deployment, Shopify-endorsed product, or Shopify App Store listing. The public demo uses synthetic data and performs no Shopify write actions.
+> Independent portfolio prototype. Synthetic data, read-only, no client deployment or measured impact.
 
 ## Discovery context and product hypothesis
 
@@ -19,11 +19,11 @@ While helping a third-party fulfilment operator examine its Shopify workflows, I
 ## What the MVP supports
 
 - **Operations overview:** cross-merchant workload, ageing, payment blocks, inventory constraints, and an operations brief.
-- **Unified order queue:** actionable-first default; filter by merchant, store, payment, fulfilment, age, priority, exception, and date; sort by priority, age, merchant, or value.
-- **Merchant backlog view:** open, paid-unfulfilled, ageing, partial, blocked, average age, oldest order, trend, service target, and risk.
+- **Unified order queue:** open-order default; filter by merchant, store, payment, fulfilment, age, priority, exception, and date; sort by priority, age, merchant, or value when one currency is in scope.
+- **Merchant backlog view:** open, paid and still open, ageing, partial, blocked, average age, oldest order, supported trend, service target, and review level.
 - **Order detail:** merchant/store identity, customer, line items, inventory, notes, exceptions, rule-based priority, rationale, and next step.
 - **Exceptions and inventory:** supporting data, exact thresholds, and human-reviewed recommendations.
-- **Ask StoreOps:** grounded cross-store and merchant-scoped operational questions with linked records and deterministic fallback.
+- **Ask StoreOps:** a bounded set of cross-store and merchant-scoped questions answered from current records, with source links and explicit declines when the available data is insufficient.
 
 The product model is explicit:
 
@@ -39,11 +39,15 @@ Fulfilment provider
 
 ## Demo data
 
-The default public experience contains one fictitious fulfilment provider, eight fictitious merchants, eight simulated Shopify stores, 56 orders, and supporting products and anonymized customers. It includes paid/unfulfilled, fulfilled, partial, payment-blocked, 24-hour and 48-hour ageing, high-value delay, increasing backlog, inventory constraints, repeat customers, and one clear/no-risk merchant. All emails use `.test`; no identity or record represents a real party.
+The default public experience contains one fictitious fulfilment provider, eight fictitious merchants, eight simulated Shopify stores, 56 orders, and supporting products and synthetic customers. It includes paid/unfulfilled, fulfilled, partial, payment-blocked, 24-hour and 48-hour ageing, high-value delay, increasing backlog, inventory constraints, repeat customers, and one clear/no-risk merchant. All emails use `.test`; no identity or record represents a real party.
 
-| Operations overview | Unified order queue |
-|---|---|
-| ![Multi-merchant fulfilment overview](./docs/screenshots/overview-multi-merchant.png) | ![Unified multi-merchant order queue](./docs/screenshots/unified-order-queue.png) |
+### Operations overview
+
+![Multi-merchant fulfilment overview](./docs/screenshots/overview-multi-merchant.png)
+
+### Unified order queue
+
+![Unified multi-merchant order queue](./docs/screenshots/unified-order-queue.png)
 
 ![Responsive operations overview](./docs/screenshots/mobile-overview-multi-merchant.png)
 
@@ -60,23 +64,22 @@ Alerts are deterministic. The model does not decide whether a rule was crossed.
 | Partial fulfilment | Shopify fulfilment state is partial |
 | Payment blocked | Open order without paid or authorized status |
 | Inventory constraint | Same-store variant availability below required quantity |
-| Increasing merchant backlog | Open orders and period-over-period increase cross configured thresholds |
+| Increasing merchant backlog | Demo open orders and change against the seeded baseline cross configured thresholds |
 
 The **operational priority score** combines order age, merchant service-level target, payment readiness, fulfilment state, order value, same-store customer value, merchant backlog, and inventory availability. It is rule-based prioritization—not predictive AI or autonomous decision-making. Defaults live in `lib/domain/config.ts` and require operator validation before production use.
 
-## Grounded AI approach
+## Record-grounded answer design
 
 1. Classify the question into a closed intent registry.
-2. determine all-store, merchant, or store scope.
+2. Determine all-store, merchant, or store scope.
 3. Retrieve only records inside that scope.
 4. Calculate metrics, alerts, and priority outside the model.
-5. Build a source-derived answer and record allowlist.
-6. Send minimal structured context to the OpenAI Responses API.
-7. Require strict JSON-schema output and validate it with Zod.
-8. Reject altered text, values, ordering, links, or record identifiers.
-9. Use the deterministic answer on missing credentials or any failure.
+5. Compose the answer, recommendation, source links, and record allowlist on the server.
+6. Optionally send scoped facts and the approved answer through the OpenAI Responses API under a strict JSON schema.
+7. Accept the model output only when every field, value, link, identifier, and array position matches the approved answer.
+8. Use the deterministic answer when credentials are missing, the request fails, or any output changes.
 
-The model cannot invent stores, merge unrelated merchant data, change calculations, create alerts, execute GraphQL, or perform a write. Facts and recommendations remain visibly separate.
+The current model path is deliberately narrow: it does not select records, calculate metrics, write recommendations, or paraphrase accepted output. It tests output containment without making the workflow depend on model creativity. That is a safeguard experiment, not evidence that AI improves fulfilment performance.
 
 ## Architecture
 
@@ -90,10 +93,10 @@ flowchart LR
   DEMO --> DOMAIN["Provider → merchant → store domain model"]
   GQL --> DOMAIN
   DOMAIN --> RULES["Deterministic metrics, alerts, priority"]
-  RULES --> FALLBACK["Deterministic brief and answers"]
+  RULES --> FALLBACK["Server-generated brief and answers"]
   RULES --> RETRIEVE["Scoped retrieval + record allowlist"]
-  RETRIEVE --> OPENAI["OpenAI Responses API (optional)"]
-  OPENAI --> VALIDATE["Schema + exact evidence validation"]
+  RETRIEVE --> OPENAI["Optional constrained model pass"]
+  OPENAI --> VALIDATE["Schema + exact-output validation"]
   VALIDATE --> UI
   FALLBACK --> UI
 ```
@@ -121,9 +124,9 @@ npm run dev
 
 No credentials are required. Missing live credentials or a failed live request produces a visible demo fallback rather than a broken public experience.
 
-## Optional live Shopify connection
+## Optional local Shopify connection
 
-The prototype supports one development store through `SHOPIFY_STORE_DOMAIN` and `SHOPIFY_ADMIN_ACCESS_TOKEN`, or multiple server-side connections through `SHOPIFY_STORES_JSON`. Each configured connection includes internal merchant/store IDs, names, domain, token, API version, and connection state. Tokens never enter browser code.
+The prototype supports one development store through `SHOPIFY_STORE_DOMAIN` and `SHOPIFY_ADMIN_ACCESS_TOKEN`, or multiple server-side connections through `SHOPIFY_STORES_JSON`. Each configured connection includes internal merchant/store IDs, names, domain, token, API version, and connection state. Tokens never enter browser code. Live mode is deliberately disabled in production builds because this portfolio prototype has no operator authentication; the public deployment always falls back to synthetic data.
 
 Required read scopes are `read_orders`, `read_customers`, `read_products`, and `read_inventory`; add `read_all_orders` only when approved access beyond Shopify’s default order-history window is required. This portfolio integration uses a development/custom-app token path, not production public-app OAuth.
 
@@ -143,7 +146,7 @@ OPENAI_API_KEY=sk_...
 OPENAI_MODEL=gpt-5.6-terra
 ```
 
-Without a key, the full product remains usable through deterministic briefs and answers.
+This enables the constrained model-output path; it does not unlock additional conclusions or rewrite the server-generated answer. Without a key, the same product remains usable through deterministic briefs and answers.
 
 ## Security, privacy, and tenant separation
 
@@ -161,6 +164,8 @@ Production would require Shopify OAuth and merchant authorization, encrypted ten
 - Structured retrieval is simpler and safer than a vector database for this bounded dataset.
 - A server-side connection list is sufficient for the prototype; production needs encrypted persistence and OAuth lifecycle handling.
 - Rules are inspectable but not yet calibrated with external operator testing.
+- Ask StoreOps supports a closed question set; it is not a general store-data chatbot.
+- The OpenAI path tests strict output containment but does not yet demonstrate useful generative synthesis.
 - The snapshot is read-oriented; no webhooks, background sync, carrier events, complete history, location allocation, or fulfilment writes.
 - Currency is preserved per store and not summed into a misleading cross-currency revenue metric.
 - The system does not know staffing, carrier cutoffs, margin, inbound stock, or merchant-specific exception policy.
@@ -190,7 +195,7 @@ npm run build
 
 ## Shopify application context
 
-I built this project for an active Shopify Product Manager application to demonstrate direct workflow discovery, merchant/operator empathy, Shopify data-model and API fluency, narrow MVP judgment, AI-assisted implementation, dogfooding, testing, and the ability to move independently from an ambiguous problem to working software. AI coding tools accelerated framing, implementation, debugging, testing, and documentation; I retained responsibility for product scope, rules, safeguards, technical validation, and quality.
+I built this project for a Shopify Product Manager application to demonstrate direct workflow discovery, merchant/operator empathy, Shopify data-model and API fluency, narrow MVP judgment, record-grounding safeguards, dogfooding, testing, and the ability to move independently from an ambiguous problem to working software. AI coding tools accelerated framing, implementation, debugging, testing, and documentation; I retained responsibility for product scope, rules, safeguards, technical validation, and quality.
 
 ## Portfolio artifacts
 

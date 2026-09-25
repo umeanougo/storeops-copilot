@@ -74,6 +74,7 @@ sequenceDiagram
 - Queries use verified Admin GraphQL fields and read-only scopes.
 - Cursor pagination is capped for the prototype; throttle metadata and top-level errors are handled.
 - Demo fallback is visible if a live connection is incomplete or fails.
+- Public production builds force demo mode; live Shopify rendering is local-only until authentication exists.
 - Production needs OAuth, encrypted credential persistence/rotation, tenant roles, webhook sync, retry/backoff, coverage diagnostics, and Bulk Operations for deep history.
 
 The architecture keeps the highest-risk behavior inspectable: facts, alerts, and ranking are deterministic; record scope is explicit; invalid or unavailable model output cannot change the operational answer.

@@ -71,7 +71,7 @@ export type ProductVariant = {
   productTitle: string;
   title: string;
   sku: string;
-  available: number;
+  available: number | null;
   price: Money;
   unitsSold7d: number;
   unitsSold30d: number;
@@ -108,6 +108,8 @@ export type Order = {
   customerId: string | null;
   customerName: string;
   total: Money;
+  cancelledAt: string | null;
+  closed: boolean;
   fulfillmentStatus: FulfillmentState;
   financialStatus: FinancialState;
   lineItems: OrderLineItem[];

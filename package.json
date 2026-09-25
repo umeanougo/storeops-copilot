@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "type": "module",
   "private": true,
-  "description": "An independently built, AI-assisted multi-merchant Shopify fulfilment operations prototype.",
+  "description": "A read-only multi-merchant Shopify fulfilment operations portfolio prototype.",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
