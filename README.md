@@ -182,7 +182,7 @@ Future validation would measure time to identify awaiting work, account switches
 
 ## Quality checks
 
-Every pull request and push to `main` runs the same locked-dependency quality gate on Node.js 22. The protected default branch requires an up-to-date passing gate, blocks direct changes, force pushes, and deletion, and resolves changes through a pull request. Dependabot monitors npm and GitHub Actions dependencies weekly.
+Every pull request and push to `main` runs the same locked-dependency quality gate on Node.js 22. The protected default branch requires an up-to-date passing gate, blocks direct changes, force pushes, and deletion, and resolves changes through a pull request. Dependabot vulnerability alerts and security updates monitor npm packages; routine GitHub Actions maintenance runs weekly.
 
 ```bash
 npm ci
