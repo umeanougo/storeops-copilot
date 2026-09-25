@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowRight, Ban, Boxes, Clock3, PackageCheck, ShieldAlert, Store, TimerReset } from "lucide-react";
 import { getStoreResult } from "@/lib/data/store";
@@ -12,6 +13,10 @@ import { PageHeader } from "@/components/page-header";
 import { MetricCard } from "@/components/metric-card";
 import { DailyBriefCard } from "@/components/daily-brief-card";
 import { AlertCard } from "@/components/alert-card";
+
+export const metadata: Metadata = {
+  alternates: { canonical: "/" },
+};
 
 export const dynamic = "force-dynamic";
 

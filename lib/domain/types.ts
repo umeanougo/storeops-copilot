@@ -53,6 +53,7 @@ export type ShopifyStore = {
 
 export type Customer = {
   id: string;
+  shopifyGid?: string;
   merchantId: string;
   storeId: string;
   name: string;
@@ -65,6 +66,7 @@ export type Customer = {
 
 export type ProductVariant = {
   id: string;
+  shopifyGid?: string;
   merchantId: string;
   storeId: string;
   productId: string;
@@ -80,6 +82,7 @@ export type ProductVariant = {
 
 export type Product = {
   id: string;
+  shopifyGid?: string;
   merchantId: string;
   storeId: string;
   title: string;
@@ -90,6 +93,7 @@ export type Product = {
 
 export type OrderLineItem = {
   id: string;
+  shopifyGid?: string;
   productId: string | null;
   variantId: string | null;
   title: string;
@@ -100,6 +104,7 @@ export type OrderLineItem = {
 
 export type Order = {
   id: string;
+  shopifyGid?: string;
   merchantId: string;
   storeId: string;
   name: string;
@@ -121,6 +126,7 @@ export type Order = {
 
 export type Refund = {
   id: string;
+  shopifyGid?: string;
   merchantId: string;
   storeId: string;
   orderId: string;
